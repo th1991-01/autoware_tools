@@ -1,0 +1,212 @@
+#!/usr/bin/env python3
+
+# Copyright 2024 Proxima Technology Inc, TIER IV
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import numpy as np
+import rclpy
+from rclpy.node import Node
+from autoware_auto_planning_msgs.msg import Trajectory
+from autoware_adapi_v1_msgs.msg import OperationModeState
+from autoware_auto_control_msgs.msg import AckermannControlCommand
+from nav_msgs.msg import Odometry
+from scipy.spatial.transform import Rotation as R
+
+def getYaw(orientation_xyzw):
+    return R.from_quat(orientation_xyzw.reshape(-1, 4)).as_euler("xyz")[:, 2]
+
+def linearized_pure_pursuit_control(
+    pos_xy_obs, pos_yaw_obs, longitudinal_vel_obs, pos_xy_ref, pos_yaw_ref, longitudinal_vel_ref
+):
+    """simple_trajectory_follower in autoware"""
+    wheel_base = 4.0
+    pure_pursuit_acc_kp = 0.5
+    pure_pursuit_lookahead_time = 3.0
+    pure_pursuit_min_lookahead = 3.0
+    pure_pursuit_steer_kp_param = 2.0
+    pure_pursuit_steer_kd_param = 2.0
+
+    longitudinal_vel_err = longitudinal_vel_obs - longitudinal_vel_ref
+    pure_pursuit_acc_cmd = -pure_pursuit_acc_kp * longitudinal_vel_err
+
+    cos_yaw = np.cos(pos_yaw_ref)
+    sin_yaw = np.sin(pos_yaw_ref)
+    diff_position = pos_xy_obs - pos_xy_ref
+    lat_err = -sin_yaw * diff_position[0] + cos_yaw * diff_position[1]
+    yaw_err = pos_yaw_obs - pos_yaw_ref
+    lat_err = np.array([lat_err]).flatten()[0]
+    yaw_err = np.array([yaw_err]).flatten()[0]
+    while True:
+        if yaw_err > np.pi:
+            yaw_err -= 2.0 * np.pi
+        if yaw_err < (-np.pi):
+            yaw_err += 2.0 * np.pi
+        if np.abs(yaw_err) < np.pi:
+            break
+
+    lookahead = pure_pursuit_min_lookahead + pure_pursuit_lookahead_time * np.abs(
+        longitudinal_vel_obs
+    )
+    pure_pursuit_steer_kp = pure_pursuit_steer_kp_param * wheel_base / (lookahead * lookahead)
+    pure_pursuit_steer_kd = pure_pursuit_steer_kd_param * wheel_base / lookahead
+    pure_pursuit_steer_cmd = -pure_pursuit_steer_kp * lat_err - pure_pursuit_steer_kd * yaw_err
+    return np.array([pure_pursuit_acc_cmd, pure_pursuit_steer_cmd])
+
+
+class DataCollectingPurePursuitTrajetoryFollower(Node):
+    def __init__(self):
+        super().__init__("data_collecting_pure_pursuit_trajectory_follower")
+        for i in range(100):
+            self.get_logger().info("Hishinuma")
+
+        self.sub_odometry_ = self.create_subscription(
+            Odometry,
+            "/localization/kinematic_state",
+            self.onOdometry,
+            1,
+        )
+        self.sub_odometry_
+
+        self.sub_trajectory_ = self.create_subscription(
+            Trajectory,
+            #"/planning/scenario_planning/trajectory",
+            "/data_collecting_trajectory",
+            self.onTrajectory,
+            1,
+        )
+
+        self.sub_operation_mode_ = self.create_subscription(
+            OperationModeState,
+            "/system/operation_mode/state",
+            self.onOperationMode,
+            1,
+        )
+        self.sub_operation_mode_
+
+        self.control_cmd_pub_ = self.create_publisher(
+            AckermannControlCommand,
+            "/control/trajectory_follower/control_cmd",
+            1,
+        )
+        
+        self.timer_period_callback = 0.03  # 30ms
+        self.timer = self.create_timer(self.timer_period_callback, self.timer_callback)
+
+        self._present_kinematic_state = None
+        self._present_trajectory = None
+        self._present_operation_mode = None
+
+    def onOdometry(self, msg):
+        self._present_kinematic_state = msg
+
+    def onTrajectory(self, msg):
+        self._present_trajectory = msg
+
+    def onOperationMode(self, msg):
+        self._present_operation_mode = msg
+
+    def timer_callback(self):
+        if (self._present_trajectory is not None) and (self._present_kinematic_state is not None):
+            self.control()
+
+    def control(self):
+        is_applying_control = False
+        if self._present_operation_mode is not None:
+            if (
+                self._present_operation_mode.mode == 2
+                and self._present_operation_mode.is_autoware_control_enabled
+            ):
+                is_applying_control = True
+
+        present_position = np.array(
+            [
+                self._present_kinematic_state.pose.pose.position.x,
+                self._present_kinematic_state.pose.pose.position.y,
+                self._present_kinematic_state.pose.pose.position.z,
+            ]
+        )
+        present_orientation = np.array(
+            [
+                self._present_kinematic_state.pose.pose.orientation.x,
+                self._present_kinematic_state.pose.pose.orientation.y,
+                self._present_kinematic_state.pose.pose.orientation.z,
+                self._present_kinematic_state.pose.pose.orientation.w,
+            ]
+        )
+        present_linear_velocity = np.array(
+            [
+                self._present_kinematic_state.twist.twist.linear.x,
+                self._present_kinematic_state.twist.twist.linear.y,
+                self._present_kinematic_state.twist.twist.linear.z,
+            ]
+        )
+        present_yaw = getYaw(present_orientation)
+        
+        trajectory_position = []
+        trajectory_orientation = []
+        trajectory_longitudinal_velocity = []
+        points = self._present_trajectory.points
+        for i in range(len(points)):
+            trajectory_position.append(
+                [points[i].pose.position.x, points[i].pose.position.y, points[i].pose.position.z]
+            )
+            trajectory_orientation.append(
+                [
+                    points[i].pose.orientation.x,
+                    points[i].pose.orientation.y,
+                    points[i].pose.orientation.z,
+                    points[i].pose.orientation.w,
+                ]
+            )
+            trajectory_longitudinal_velocity.append(points[i].longitudinal_velocity_mps)
+        trajectory_position = np.array(trajectory_position)
+        trajectory_orientation = np.array(trajectory_orientation)
+        trajectory_longitudinal_velocity = np.array(trajectory_longitudinal_velocity)
+        
+        nearestIndex = ((trajectory_position - present_position) ** 2).sum(axis=1).argmin()
+        closest_traj_position = trajectory_position[nearestIndex]
+        closest_traj_yaw = getYaw(trajectory_orientation[nearestIndex])
+        closest_traj_longitudinal_velocity = trajectory_longitudinal_velocity[nearestIndex]
+
+        cmd = linearized_pure_pursuit_control(present_position[:2],
+                                              present_yaw,
+                                              present_linear_velocity[0],
+                                              closest_traj_position[:2],
+                                              closest_traj_yaw,
+                                              closest_traj_longitudinal_velocity)
+
+        cmd_msg = AckermannControlCommand()
+        cmd_msg.stamp = cmd_msg.lateral.stamp = cmd_msg.longitudinal.stamp = (
+            self.get_clock().now().to_msg()
+        )
+        cmd_msg.longitudinal.speed = closest_traj_longitudinal_velocity
+        cmd_msg.longitudinal.acceleration = cmd[0]
+        cmd_msg.lateral.steering_tire_angle = cmd[1]
+
+        self.control_cmd_pub_.publish(cmd_msg)
+
+
+def main(args=None):
+    rclpy.init(args=args)
+
+    data_collecting_pure_pursuit_trajectory_follower = DataCollectingPurePursuitTrajetoryFollower()
+
+    rclpy.spin(data_collecting_pure_pursuit_trajectory_follower)
+
+    data_collecting_pure_pursuit_trajectory_follower.destroy_node()
+    rclpy.shutdown()
+
+
+if __name__ == "__main__":
+    main()
