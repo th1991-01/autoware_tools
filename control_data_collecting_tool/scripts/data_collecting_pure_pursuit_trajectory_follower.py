@@ -16,6 +16,7 @@
 
 from autoware_auto_control_msgs.msg import AckermannControlCommand
 from autoware_auto_planning_msgs.msg import Trajectory
+from autoware_auto_vehicle_msgs.msg import GearCommand
 from nav_msgs.msg import Odometry
 import numpy as np
 import rclpy
@@ -84,10 +85,17 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
             self.onTrajectory,
             1,
         )
+        self.sub_trajectory_
 
         self.control_cmd_pub_ = self.create_publisher(
             AckermannControlCommand,
-            "/control/trajectory_follower/control_cmd",
+            "/external/selected/control_cmd",
+            1,
+        )
+
+        self.gear_cmd_pub_ = self.create_publisher(
+            GearCommand,
+            "/external/selected/gear_cmd",
             1,
         )
 
@@ -167,15 +175,20 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
             closest_traj_longitudinal_velocity,
         )
 
-        cmd_msg = AckermannControlCommand()
-        cmd_msg.stamp = cmd_msg.lateral.stamp = cmd_msg.longitudinal.stamp = (
-            self.get_clock().now().to_msg()
-        )
-        cmd_msg.longitudinal.speed = closest_traj_longitudinal_velocity
-        cmd_msg.longitudinal.acceleration = cmd[0]
-        cmd_msg.lateral.steering_tire_angle = cmd[1]
+        control_cmd_msg = AckermannControlCommand()
+        control_cmd_msg.stamp = (
+            control_cmd_msg.lateral.stamp
+        ) = control_cmd_msg.longitudinal.stamp = (self.get_clock().now().to_msg())
+        control_cmd_msg.longitudinal.speed = closest_traj_longitudinal_velocity
+        control_cmd_msg.longitudinal.acceleration = cmd[0]
+        control_cmd_msg.lateral.steering_tire_angle = cmd[1]
 
-        self.control_cmd_pub_.publish(cmd_msg)
+        self.control_cmd_pub_.publish(control_cmd_msg)
+
+        gear_cmd_msg = GearCommand()
+        gear_cmd_msg.stamp = control_cmd_msg.lateral.stamp
+        gear_cmd_msg.command = GearCommand.DRIVE
+        self.gear_cmd_pub_.publish(gear_cmd_msg)
 
 
 def main(args=None):
