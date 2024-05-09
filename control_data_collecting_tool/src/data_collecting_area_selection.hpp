@@ -3,11 +3,12 @@
 #define DATA_COLLECTING_AREA_SELECTION_HPP_
 
 #include <rclcpp/rclcpp.hpp>
-#include <rviz_common/tool.hpp>
 #include <rviz_common/interaction/selection_manager.hpp>
+#include <rviz_common/tool.hpp>
 #include <rviz_default_plugins/tools/move/move_tool.hpp>
 #include <rviz_rendering/viewport_projection_finder.hpp>
 
+#include <autoware_adapi_v1_msgs/msg/operation_mode_state.hpp>
 #include <geometry_msgs/msg/point.hpp>
 #include <geometry_msgs/msg/polygon_stamped.hpp>
 
@@ -46,10 +47,17 @@ public:
   std::shared_ptr<rviz_rendering::ViewportProjectionFinder> projection_finder_;
 
 private:
-  Ogre::Vector3 start_pos, end_pos;
+  rclcpp::Subscription<autoware_adapi_v1_msgs::msg::OperationModeState>::SharedPtr
+    sub_operation_mode_state_;
+
+  void onOperationModeState(
+    const autoware_adapi_v1_msgs::msg::OperationModeState::ConstSharedPtr msg);
+
+  Ogre::Vector3 start_pos;
 
   rviz_default_plugins::tools::MoveTool * move_tool_;
   bool selecting_;
+  bool control_applying_;
   int sel_start_x_;
   int sel_start_y_;
   int sel_end_x_;
