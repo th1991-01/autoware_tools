@@ -17,33 +17,20 @@ cp tmp/control.launch.py ~/autoware/src/universe/autoware.universe/launch/tier4_
 3 autoware立ち上げ
 
 ```bash
-ros2 launch autoware_launch planning_simulator.launch.xml map_path:=$HOME/autoware_map/sample-map-planning vehicle_model:=sample_vehicle sensor_model:=sample_sensor_kit trajectory_follower_mode:=control_data_collecting_tool
-```
-
-rviz_configをいじったバージョン
-
-```bash
 ros2 launch autoware_launch planning_simulator.launch.xml rviz_config:=/home/proxima/autoware/src/tools/control_data_collecting_tool/rviz/autoware.rviz map_path:=$HOME/autoware_map/sample-map-planning vehicle_model:=sample_vehicle sensor_model:=sample_sensor_kit trajectory_follower_mode:=control_data_collecting_tool
 ```
 
 TODO: パスのベタ打ちを何とかする
 
-4 プラグイン追加とトピック描画追加（※アドホックすぎるので改善したい）
-
-- プラグイン追加：`pure_pursuit_control_data_collection_tool` -> `DataCollectingAreaSelectionTool`
-- トピック描画追加：
-  - データ収集領域：`Display`->`add`->`rviz_default_plugins` -> `Polygon`、トピック名は`/data_collecting_area`
-  - 目標軌道：`Display`->`add`->`rviz_default_plugins` -> `MarkerArray`、トピック名は`data_collecting_trajectory_marker_array`（※もしTrajectoryをそのまま描画できるのならばそれに変更したい）
-
-5 追加したプラグイン`DataCollectingAreaSelectionTool`を使ってデータ収集領域を選択
+4 `DataCollectingAreaSelectionTool`を使ってデータ収集領域を選択
 
 - 走行中にはデータ収集領域を変更できない
 
-6 initial poseを置く
+5 `2D Pose Estimate`を使って initial poseを置く
 
-7 （※この操作をなしでできるように改善したい）
+6 `2D Goal Pose`を使って goal poseを置く（※この操作をなしでできるように改善したい）
 
-8 自動走行する（現在は目標軌道は適当に仮置きしている）
+7 自動走行する（現在は目標軌道は適当に仮置きしている）
 
 ## TODO
 
