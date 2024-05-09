@@ -443,7 +443,12 @@ def launch_setup(context, *args, **kwargs):
     elif trajectory_follower_mode == "smart_mpc_trajectory_follower":
         return [group, control_validator_group, smart_mpc_trajectory_follower]
     elif trajectory_follower_mode == "control_data_collecting_tool":
-        return [group, control_validator_group, data_collecting_pure_pursuit_trajectory_follower, data_collecting_trajectory_publisher]
+        return [
+            group,
+            control_validator_group,
+            data_collecting_pure_pursuit_trajectory_follower,
+            data_collecting_trajectory_publisher,
+        ]
 
 
 def generate_launch_description():

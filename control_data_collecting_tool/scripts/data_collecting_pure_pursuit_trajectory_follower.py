@@ -14,22 +14,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from autoware_auto_control_msgs.msg import AckermannControlCommand
+from autoware_auto_planning_msgs.msg import Trajectory
+from nav_msgs.msg import Odometry
 import numpy as np
 import rclpy
 from rclpy.node import Node
-from autoware_auto_planning_msgs.msg import Trajectory
-from autoware_adapi_v1_msgs.msg import OperationModeState
-from autoware_auto_control_msgs.msg import AckermannControlCommand
-from nav_msgs.msg import Odometry
 from scipy.spatial.transform import Rotation as R
+
 
 def getYaw(orientation_xyzw):
     return R.from_quat(orientation_xyzw.reshape(-1, 4)).as_euler("xyz")[:, 2]
 
+
 def linearized_pure_pursuit_control(
     pos_xy_obs, pos_yaw_obs, longitudinal_vel_obs, pos_xy_ref, pos_yaw_ref, longitudinal_vel_ref
 ):
-    """simple_trajectory_follower in autoware"""
+    # control law equal to simple_trajectory_follower in autoware
     wheel_base = 4.0
     pure_pursuit_acc_kp = 0.5
     pure_pursuit_lookahead_time = 3.0
@@ -67,8 +68,6 @@ def linearized_pure_pursuit_control(
 class DataCollectingPurePursuitTrajetoryFollower(Node):
     def __init__(self):
         super().__init__("data_collecting_pure_pursuit_trajectory_follower")
-        for i in range(100):
-            self.get_logger().info("Hishinuma")
 
         self.sub_odometry_ = self.create_subscription(
             Odometry,
@@ -80,32 +79,23 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
 
         self.sub_trajectory_ = self.create_subscription(
             Trajectory,
-            #"/planning/scenario_planning/trajectory",
+            # "/planning/scenario_planning/trajectory",
             "/data_collecting_trajectory",
             self.onTrajectory,
             1,
         )
-
-        self.sub_operation_mode_ = self.create_subscription(
-            OperationModeState,
-            "/system/operation_mode/state",
-            self.onOperationMode,
-            1,
-        )
-        self.sub_operation_mode_
 
         self.control_cmd_pub_ = self.create_publisher(
             AckermannControlCommand,
             "/control/trajectory_follower/control_cmd",
             1,
         )
-        
+
         self.timer_period_callback = 0.03  # 30ms
         self.timer = self.create_timer(self.timer_period_callback, self.timer_callback)
 
         self._present_kinematic_state = None
         self._present_trajectory = None
-        self._present_operation_mode = None
 
     def onOdometry(self, msg):
         self._present_kinematic_state = msg
@@ -113,22 +103,11 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
     def onTrajectory(self, msg):
         self._present_trajectory = msg
 
-    def onOperationMode(self, msg):
-        self._present_operation_mode = msg
-
     def timer_callback(self):
         if (self._present_trajectory is not None) and (self._present_kinematic_state is not None):
             self.control()
 
     def control(self):
-        is_applying_control = False
-        if self._present_operation_mode is not None:
-            if (
-                self._present_operation_mode.mode == 2
-                and self._present_operation_mode.is_autoware_control_enabled
-            ):
-                is_applying_control = True
-
         present_position = np.array(
             [
                 self._present_kinematic_state.pose.pose.position.x,
@@ -152,7 +131,7 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
             ]
         )
         present_yaw = getYaw(present_orientation)
-        
+
         trajectory_position = []
         trajectory_orientation = []
         trajectory_longitudinal_velocity = []
@@ -173,18 +152,20 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
         trajectory_position = np.array(trajectory_position)
         trajectory_orientation = np.array(trajectory_orientation)
         trajectory_longitudinal_velocity = np.array(trajectory_longitudinal_velocity)
-        
+
         nearestIndex = ((trajectory_position - present_position) ** 2).sum(axis=1).argmin()
         closest_traj_position = trajectory_position[nearestIndex]
         closest_traj_yaw = getYaw(trajectory_orientation[nearestIndex])
         closest_traj_longitudinal_velocity = trajectory_longitudinal_velocity[nearestIndex]
 
-        cmd = linearized_pure_pursuit_control(present_position[:2],
-                                              present_yaw,
-                                              present_linear_velocity[0],
-                                              closest_traj_position[:2],
-                                              closest_traj_yaw,
-                                              closest_traj_longitudinal_velocity)
+        cmd = linearized_pure_pursuit_control(
+            present_position[:2],
+            present_yaw,
+            present_linear_velocity[0],
+            closest_traj_position[:2],
+            closest_traj_yaw,
+            closest_traj_longitudinal_velocity,
+        )
 
         cmd_msg = AckermannControlCommand()
         cmd_msg.stamp = cmd_msg.lateral.stamp = cmd_msg.longitudinal.stamp = (

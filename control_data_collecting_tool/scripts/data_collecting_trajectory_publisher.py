@@ -16,7 +16,6 @@
 
 from autoware_auto_planning_msgs.msg import Trajectory
 from autoware_auto_planning_msgs.msg import TrajectoryPoint
-from autoware_adapi_v1_msgs.msg import OperationModeState
 from geometry_msgs.msg import Point
 from geometry_msgs.msg import PolygonStamped
 from nav_msgs.msg import Odometry
@@ -25,6 +24,7 @@ import rclpy
 from rclpy.node import Node
 from visualization_msgs.msg import Marker
 from visualization_msgs.msg import MarkerArray
+
 
 class DataCollectingTrajectoryPublisher(Node):
     def __init__(self):
@@ -49,14 +49,6 @@ class DataCollectingTrajectoryPublisher(Node):
             1,
         )
         self.sub_odometry_
-        
-        self.sub_operation_mode_ = self.create_subscription(
-            OperationModeState,
-            "/system/operation_mode/state",
-            self.onOperationMode,
-            1,
-        )
-        self.sub_operation_mode_
 
         self.sub_data_collecting_area_ = self.create_subscription(
             PolygonStamped,
@@ -80,15 +72,14 @@ class DataCollectingTrajectoryPublisher(Node):
     def onOdometry(self, msg):
         self._present_kinematic_state = msg
 
-    def onOperationMode(self, msg):
-        self._present_operation_mode = msg
-
     def onDataCollectingArea(self, msg):
         self._data_collecting_area_polygon = msg
 
     def timer_callback(self):
-    
-        if (self._present_kinematic_state is not None and self._data_collecting_area_polygon is not None):
+        if (
+            self._present_kinematic_state is not None
+            and self._data_collecting_area_polygon is not None
+        ):
             present_position = np.array(
                 [
                     self._present_kinematic_state.pose.pose.position.x,
@@ -96,74 +87,21 @@ class DataCollectingTrajectoryPublisher(Node):
                     self._present_kinematic_state.pose.pose.position.z,
                 ]
             )
-            present_orientation = np.array(
+
+            data_collecting_area = np.array(
                 [
-                    self._present_kinematic_state.pose.pose.orientation.x,
-                    self._present_kinematic_state.pose.pose.orientation.y,
-                    self._present_kinematic_state.pose.pose.orientation.z,
-                    self._present_kinematic_state.pose.pose.orientation.w,
+                    np.array(
+                        [
+                            self._data_collecting_area_polygon.polygon.points[i].x,
+                            self._data_collecting_area_polygon.polygon.points[i].y,
+                            self._data_collecting_area_polygon.polygon.points[i].z,
+                        ]
+                    )
+                    for i in range(4)
                 ]
             )
-            
-            data_collecting_area = np.array([np.array([self._data_collecting_area_polygon.polygon.points[i].x,
-                                  self._data_collecting_area_polygon.polygon.points[i].y,
-                                  self._data_collecting_area_polygon.polygon.points[i].z]) for i in range(4)])
             marker_array = MarkerArray()
 
-            """
-
-            marker_corner = Marker()
-            marker_corner.type = 4
-            marker_corner.header.frame_id = "map"
-            marker_corner.action = marker_corner.ADD
-
-            marker_corner.scale.x = 0.3
-            marker_corner.scale.y = 0.0
-            marker_corner.scale.z = 0.0
-
-            marker_corner.color.a = 1.0
-            marker_corner.color.r = 1.0
-            marker_corner.color.g = 0.0
-            marker_corner.color.b = 0.0
-
-            marker_corner.lifetime.nanosec = 500000000
-            marker_corner.frame_locked = True
-
-            marker_corner.points = []
-
-            h_width = 50
-            v_width = 30
-            th = -0.11
-
-            tmp_point = Point()
-            tmp_point.x = 61518.096465958 + 30
-            tmp_point.y = 56220.9808963864 - 40
-            tmp_point.z = present_position[2]
-            marker_corner.points.append(tmp_point)
-
-            tmp_point = Point()
-            tmp_point.x = 61518.096465958 + 30 + h_width * np.cos(th)
-            tmp_point.y = 56220.9808963864 - 40 + h_width * np.sin(th)
-            tmp_point.z = present_position[2]
-            marker_corner.points.append(tmp_point)
-
-            tmp_point = Point()
-            tmp_point.x = 61518.096465958 + 30 + h_width * np.cos(th) - v_width * np.sin(th)
-            tmp_point.y = 56220.9808963864 - 40 + v_width * np.cos(th) + h_width * np.sin(th)
-            tmp_point.z = present_position[2]
-            marker_corner.points.append(tmp_point)
-
-            tmp_point = Point()
-            tmp_point.x = 61518.096465958 + 30 - v_width * np.sin(th)
-            tmp_point.y = 56220.9808963864 - 40 + v_width * np.cos(th)
-            tmp_point.z = present_position[2]
-            marker_corner.points.append(tmp_point)
-
-            marker_corner.points.append(marker_corner.points[0])
-
-            marker_array.markers.append(marker_corner)
-            """
-            # 領域の中心点を目標に、Trajectoryを生成
             marker_traj = Marker()
             marker_traj.type = 4
             marker_traj.id = 0
@@ -187,8 +125,8 @@ class DataCollectingTrajectoryPublisher(Node):
 
             debug_target_point_center = np.zeros(3)
             for i in range(4):
-                debug_target_point_center[0] += data_collecting_area[i,0] / 4.0
-                debug_target_point_center[1] += data_collecting_area[i,1] / 4.0
+                debug_target_point_center[0] += data_collecting_area[i, 0] / 4.0
+                debug_target_point_center[1] += data_collecting_area[i, 1] / 4.0
             debug_target_point_center[2] = present_position[2]
 
             diff = debug_target_point_center - present_position
@@ -253,6 +191,7 @@ def main(args=None):
 
     data_collecting_trajectory_publisher.destroy_node()
     rclpy.shutdown()
+
 
 if __name__ == "__main__":
     main()
