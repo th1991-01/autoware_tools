@@ -25,8 +25,7 @@ target_link_libraries(${PROJECT_NAME}
 
 pluginlib_export_plugin_description_file(rviz_common plugins/plugin_description.xml)
 
-# ament_python_install_package(${PROJECT_NAME})
-
+install(DIRECTORY rviz DESTINATION share/${PROJECT_NAME})
 
 ament_auto_package(
   INSTALL_TO_SHARE

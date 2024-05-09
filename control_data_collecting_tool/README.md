@@ -17,10 +17,8 @@ cp tmp/control.launch.py ~/autoware/src/universe/autoware.universe/launch/tier4_
 3 autoware立ち上げ
 
 ```bash
-ros2 launch autoware_launch planning_simulator.launch.xml rviz_config:=/home/proxima/autoware/src/tools/control_data_collecting_tool/rviz/autoware.rviz map_path:=$HOME/autoware_map/sample-map-planning vehicle_model:=sample_vehicle sensor_model:=sample_sensor_kit trajectory_follower_mode:=control_data_collecting_tool
+ros2 launch autoware_launch planning_simulator.launch.xml rviz_config:=$(ros2 pkg prefix control_data_collecting_tool)/share/control_data_collecting_tool/rviz/autoware.rviz map_path:=$HOME/autoware_map/sample-map-planning vehicle_model:=sample_vehicle sensor_model:=sample_sensor_kit trajectory_follower_mode:=control_data_collecting_tool
 ```
-
-TODO: パスのベタ打ちを何とかする
 
 4 `DataCollectingAreaSelectionTool`を使ってデータ収集領域を選択
 
