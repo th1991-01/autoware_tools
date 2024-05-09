@@ -20,6 +20,14 @@ cp tmp/control.launch.py ~/autoware/src/universe/autoware.universe/launch/tier4_
 ros2 launch autoware_launch planning_simulator.launch.xml map_path:=$HOME/autoware_map/sample-map-planning vehicle_model:=sample_vehicle sensor_model:=sample_sensor_kit trajectory_follower_mode:=control_data_collecting_tool
 ```
 
+rviz_configをいじったバージョン
+
+```bash
+ros2 launch autoware_launch planning_simulator.launch.xml rviz_config:=/home/proxima/autoware/src/tools/control_data_collecting_tool/rviz/autoware.rviz map_path:=$HOME/autoware_map/sample-map-planning vehicle_model:=sample_vehicle sensor_model:=sample_sensor_kit trajectory_follower_mode:=control_data_collecting_tool
+```
+
+TODO: パスのベタ打ちを何とかする
+
 4 プラグイン追加とトピック描画追加（※アドホックすぎるので改善したい）
 
 - プラグイン追加：`pure_pursuit_control_data_collection_tool` -> `DataCollectingAreaSelectionTool`
