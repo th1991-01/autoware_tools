@@ -11,7 +11,7 @@ This package provides a tool for collecting data by pure pursuit control within 
 2 autoware立ち上げ
 
 ```bash
-$ ros2 launch control_data_collecting_tool planning_simulator.launch.xml rviz_config:=$(ros2 pkg prefix control_data_collecting_tool)/share/control_data_collecting_tool/rviz/autoware.rviz map_path:=$HOME/autoware_map/sample-map-planning vehicle_model:=sample_vehicle sensor_model:=sample_sensor_kit trajectory_follower_mode:=control_data_collecting_tool
+ros2 launch control_data_collecting_tool planning_simulator.launch.xml map_path:=$HOME/autoware_map/sample-map-planning vehicle_model:=sample_vehicle sensor_model:=sample_sensor_kit trajectory_follower_mode:=control_data_collecting_tool
 ```
 
 3 `DataCollectingAreaSelectionTool`を使ってデータ収集領域を選択
