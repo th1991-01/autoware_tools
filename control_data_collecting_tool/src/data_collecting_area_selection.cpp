@@ -47,7 +47,7 @@ DataCollectingAreaSelectionTool::~DataCollectingAreaSelectionTool()
 void DataCollectingAreaSelectionTool::onOperationModeState(
   const autoware_adapi_v1_msgs::msg::OperationModeState::ConstSharedPtr msg)
 {
-  if (msg->mode == 2 && msg->is_autoware_control_enabled) {
+  if (msg->mode == 3 && msg->is_autoware_control_enabled) {
     control_applying_ = true;
   } else {
     control_applying_ = false;
