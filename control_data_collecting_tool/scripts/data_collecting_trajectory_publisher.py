@@ -147,8 +147,6 @@ class DataCollectingTrajectoryPublisher(Node):
             self._present_kinematic_state is not None
             and self._data_collecting_area_polygon is not None
         ):
-            # TODP: データ収集領域をうまく選択できなかった場合のエラーチェックを入れる
-
             # [0] receive data from topic
             present_position = np.array(
                 [
@@ -178,6 +176,8 @@ class DataCollectingTrajectoryPublisher(Node):
             l4 = np.sqrt(((data_collecting_area[3, :2] - data_collecting_area[0, :2]) ** 2).sum())
             la = (l1 + l3) / 2
             lb = (l2 + l4) / 2
+            if np.abs(la - lb) < 1e-6:
+                la += 0.1  # long_side_length must not be equal to short_side_length
             ld = np.sqrt(la**2 + lb**2)
 
             rectangle_center_position = np.zeros(2)
@@ -194,7 +194,7 @@ class DataCollectingTrajectoryPublisher(Node):
                 (vec_from_center_to_point1_data**2).sum()
             )
 
-            # [2] compute trajectory point
+            # [2] compute trajectory
             if la > lb:
                 long_side_length = la
                 short_side_length = lb
@@ -219,7 +219,7 @@ class DataCollectingTrajectoryPublisher(Node):
             step = 0.1
             total_distance = ld * 3.5
             trajectory_position_data, trajectory_yaw_data = get_trajectory_points(
-                max(long_side_length - long_side_margin, 1.0),
+                max(long_side_length - long_side_margin, 1.1),
                 max(short_side_length - long_side_margin, 1.0),
                 step,
                 total_distance,
@@ -234,6 +234,25 @@ class DataCollectingTrajectoryPublisher(Node):
             trajectory_position_data = (rot_matrix @ trajectory_position_data.T).T
             trajectory_position_data += rectangle_center_position
 
+            # [3] publish trajectory
+            tmp_traj = Trajectory()
+            for i in range(len(trajectory_position_data)):
+                tmp_traj_point = TrajectoryPoint()
+                tmp_traj_point.pose.position.x = trajectory_position_data[i, 0]
+                tmp_traj_point.pose.position.y = trajectory_position_data[i, 1]
+                tmp_traj_point.pose.position.z = present_position[2]
+
+                tmp_traj_point.pose.orientation.x = 0.0
+                tmp_traj_point.pose.orientation.y = 0.0
+                tmp_traj_point.pose.orientation.z = np.sin(trajectory_yaw_data[i] / 2)
+                tmp_traj_point.pose.orientation.w = np.cos(trajectory_yaw_data[i] / 2)
+
+                tmp_traj_point.longitudinal_velocity_mps = 2.5
+                tmp_traj.points.append(tmp_traj_point)
+
+            self.trajectory_for_collecting_data_pub_.publish(tmp_traj)
+
+            # [4] publish marker_array
             marker_array = MarkerArray()
             marker_traj = Marker()
             marker_traj.type = 4
@@ -255,26 +274,6 @@ class DataCollectingTrajectoryPublisher(Node):
             marker_traj.frame_locked = True
 
             marker_traj.points = []
-
-            tmp_traj = Trajectory()
-
-            for i in range(len(trajectory_position_data)):
-                tmp_traj_point = TrajectoryPoint()
-                tmp_traj_point.pose.position.x = trajectory_position_data[i, 0]
-                tmp_traj_point.pose.position.y = trajectory_position_data[i, 1]
-                tmp_traj_point.pose.position.z = present_position[2]
-
-                tmp_traj_point.pose.orientation.x = 0.0
-                tmp_traj_point.pose.orientation.y = 0.0
-                tmp_traj_point.pose.orientation.z = np.sin(trajectory_yaw_data[i] / 2)
-                tmp_traj_point.pose.orientation.w = np.cos(trajectory_yaw_data[i] / 2)
-
-                tmp_traj_point.longitudinal_velocity_mps = 2.5
-                # if dist < 5:
-                #    tmp_traj_point.longitudinal_velocity_mps = 0.0
-
-                tmp_traj.points.append(tmp_traj_point)
-
             marker_downsampling = 3
             for i in range(len(trajectory_position_data) // marker_downsampling):
                 tmp_marker_point = Point()
@@ -284,9 +283,6 @@ class DataCollectingTrajectoryPublisher(Node):
                 marker_traj.points.append(tmp_marker_point)
 
             marker_array.markers.append(marker_traj)
-
-            self.trajectory_for_collecting_data_pub_.publish(tmp_traj)
-
             self.data_collecting_trajectory_marker_array_pub_.publish(marker_array)
 
 
