@@ -26,8 +26,13 @@ from numpy import pi
 from numpy import sin
 import rclpy
 from rclpy.node import Node
+from scipy.spatial.transform import Rotation as R
 from visualization_msgs.msg import Marker
 from visualization_msgs.msg import MarkerArray
+
+
+def getYaw(orientation_xyzw):
+    return R.from_quat(orientation_xyzw.reshape(-1, 4)).as_euler("xyz")[:, 2]
 
 
 def get_trajectory_points(
@@ -155,6 +160,15 @@ class DataCollectingTrajectoryPublisher(Node):
                     self._present_kinematic_state.pose.pose.position.z,
                 ]
             )
+            present_orientation = np.array(
+                [
+                    self._present_kinematic_state.pose.pose.orientation.x,
+                    self._present_kinematic_state.pose.pose.orientation.y,
+                    self._present_kinematic_state.pose.pose.orientation.z,
+                    self._present_kinematic_state.pose.pose.orientation.w,
+                ]
+            )
+            present_yaw = getYaw(present_orientation)[0]
 
             data_collecting_area = np.array(
                 [
@@ -179,7 +193,6 @@ class DataCollectingTrajectoryPublisher(Node):
             if np.abs(la - lb) < 1e-6:
                 la += 0.1  # long_side_length must not be equal to short_side_length
             ld = np.sqrt(la**2 + lb**2)
-
             rectangle_center_position = np.zeros(2)
             for i in range(4):
                 rectangle_center_position[0] += data_collecting_area[i, 0] / 4.0
@@ -194,7 +207,7 @@ class DataCollectingTrajectoryPublisher(Node):
                 (vec_from_center_to_point1_data**2).sum()
             )
 
-            # [2] compute trajectory
+            # [2] compute whole trajectory
             if la > lb:
                 long_side_length = la
                 short_side_length = lb
@@ -217,7 +230,8 @@ class DataCollectingTrajectoryPublisher(Node):
             long_side_margin = 5
             long_side_margin = 5
             step = 0.1
-            total_distance = ld * 6.0
+            total_distance = ld * (1 + np.pi) * 2
+
             trajectory_position_data, trajectory_yaw_data = get_trajectory_points(
                 max(long_side_length - long_side_margin, 1.1),
                 max(short_side_length - long_side_margin, 1.0),
@@ -233,19 +247,51 @@ class DataCollectingTrajectoryPublisher(Node):
             )
             trajectory_position_data = (rot_matrix @ trajectory_position_data.T).T
             trajectory_position_data += rectangle_center_position
+            trajectory_yaw_data += yaw_offset
 
-            # [3] publish trajectory
+            # [3] find near point for local trajectory
+            distance = np.sqrt(((trajectory_position_data - present_position[:2]) ** 2).sum(axis=1))
+            index_array_near = np.argsort(distance)
+
+            max_cos_diff_yaw_value = -1
+            nearestIndex = None
+            for i in range(len(index_array_near)):
+                if (distance[index_array_near[0]] + step * 10) < distance[index_array_near[i]]:
+                    if nearestIndex is None:
+                        nearestIndex = index_array_near[0]
+                    break
+                tmp_cos_diff_yaw_value = np.cos(
+                    trajectory_yaw_data[index_array_near[i]] - present_yaw
+                )
+                if tmp_cos_diff_yaw_value > max_cos_diff_yaw_value:
+                    max_cos_diff_yaw_value = 1.0 * tmp_cos_diff_yaw_value
+                    nearestIndex = 1 * index_array_near[i]
+
+            # [4] publish trajectory
+
+            aug_data_length = len(trajectory_position_data) // 4
+            trajectory_position_data = np.vstack(
+                [trajectory_position_data, trajectory_position_data[:aug_data_length]]
+            )
+            trajectory_yaw_data = np.hstack(
+                [trajectory_yaw_data, trajectory_yaw_data[:aug_data_length]]
+            )
+
             tmp_traj = Trajectory()
-            for i in range(len(trajectory_position_data)):
+            for i in range(min(int(50 / step), aug_data_length)):
                 tmp_traj_point = TrajectoryPoint()
-                tmp_traj_point.pose.position.x = trajectory_position_data[i, 0]
-                tmp_traj_point.pose.position.y = trajectory_position_data[i, 1]
+                tmp_traj_point.pose.position.x = trajectory_position_data[i + nearestIndex, 0]
+                tmp_traj_point.pose.position.y = trajectory_position_data[i + nearestIndex, 1]
                 tmp_traj_point.pose.position.z = present_position[2]
 
                 tmp_traj_point.pose.orientation.x = 0.0
                 tmp_traj_point.pose.orientation.y = 0.0
-                tmp_traj_point.pose.orientation.z = np.sin(trajectory_yaw_data[i] / 2)
-                tmp_traj_point.pose.orientation.w = np.cos(trajectory_yaw_data[i] / 2)
+                tmp_traj_point.pose.orientation.z = np.sin(
+                    trajectory_yaw_data[i + nearestIndex] / 2
+                )
+                tmp_traj_point.pose.orientation.w = np.cos(
+                    trajectory_yaw_data[i + nearestIndex] / 2
+                )
 
                 tmp_traj_point.longitudinal_velocity_mps = 2.5
                 tmp_traj.points.append(tmp_traj_point)
@@ -254,6 +300,38 @@ class DataCollectingTrajectoryPublisher(Node):
 
             # [4] publish marker_array
             marker_array = MarkerArray()
+
+            # [4b] local trajectory
+            marker_traj2 = Marker()
+            marker_traj2.type = 4
+            marker_traj2.id = 1
+            marker_traj2.header.frame_id = "map"
+
+            marker_traj2.action = marker_traj2.ADD
+
+            marker_traj2.scale.x = 0.3
+            marker_traj2.scale.y = 0.0
+            marker_traj2.scale.z = 0.0
+
+            marker_traj2.color.a = 1.0
+            marker_traj2.color.r = 1.0
+            marker_traj2.color.g = 0.0
+            marker_traj2.color.b = 0.0
+
+            marker_traj2.lifetime.nanosec = 500000000
+            marker_traj2.frame_locked = True
+
+            marker_traj2.points = []
+            for i in range(len(tmp_traj.points)):
+                tmp_marker_point = Point()
+                tmp_marker_point.x = tmp_traj.points[i].pose.position.x
+                tmp_marker_point.y = tmp_traj.points[i].pose.position.y
+                tmp_marker_point.z = 0.0
+                marker_traj2.points.append(tmp_marker_point)
+
+            marker_array.markers.append(marker_traj2)
+
+            # [4a] whole trajectory
             marker_traj = Marker()
             marker_traj.type = 4
             marker_traj.id = 0
@@ -274,8 +352,8 @@ class DataCollectingTrajectoryPublisher(Node):
             marker_traj.frame_locked = True
 
             marker_traj.points = []
-            marker_downsampling = 3
-            for i in range(len(trajectory_position_data) // marker_downsampling):
+            marker_downsampling = 5
+            for i in range((len(trajectory_position_data) // marker_downsampling)):
                 tmp_marker_point = Point()
                 tmp_marker_point.x = trajectory_position_data[i * marker_downsampling, 0]
                 tmp_marker_point.y = trajectory_position_data[i * marker_downsampling, 1]
@@ -283,6 +361,7 @@ class DataCollectingTrajectoryPublisher(Node):
                 marker_traj.points.append(tmp_marker_point)
 
             marker_array.markers.append(marker_traj)
+
             self.data_collecting_trajectory_marker_array_pub_.publish(marker_array)
 
 
