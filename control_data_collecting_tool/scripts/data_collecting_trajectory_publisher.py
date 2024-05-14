@@ -268,7 +268,6 @@ class DataCollectingTrajectoryPublisher(Node):
                     nearestIndex = 1 * index_array_near[i]
 
             # [4] publish trajectory
-
             aug_data_length = len(trajectory_position_data) // 4
             trajectory_position_data = np.vstack(
                 [trajectory_position_data, trajectory_position_data[:aug_data_length]]
