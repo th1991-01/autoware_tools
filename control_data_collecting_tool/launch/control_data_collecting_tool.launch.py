@@ -15,24 +15,28 @@
 # limitations under the License.
 
 import launch
-from launch_ros.actions import Node
 from launch import LaunchService
+from launch_ros.actions import Node
+
 
 def generate_launch_description():
-    return launch.LaunchDescription([
-        Node(
-            package="control_data_collecting_tool",
-            executable="data_collecting_pure_pursuit_trajectory_follower.py",
-            name="data_collecting_pure_pursuit_trajectory_follower",
-        ),
-        Node(
-            package="control_data_collecting_tool",
-            executable="data_collecting_trajectory_publisher.py",
-            name="data_collecting_trajectory_publisher",
-        )
-    ])
+    return launch.LaunchDescription(
+        [
+            Node(
+                package="control_data_collecting_tool",
+                executable="data_collecting_pure_pursuit_trajectory_follower.py",
+                name="data_collecting_pure_pursuit_trajectory_follower",
+            ),
+            Node(
+                package="control_data_collecting_tool",
+                executable="data_collecting_trajectory_publisher.py",
+                name="data_collecting_trajectory_publisher",
+            ),
+        ]
+    )
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     ls = LaunchService()
     ls.include_launch_description(generate_launch_description())
     ls.run()

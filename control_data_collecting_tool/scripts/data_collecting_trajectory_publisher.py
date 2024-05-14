@@ -217,7 +217,7 @@ class DataCollectingTrajectoryPublisher(Node):
             long_side_margin = 5
             long_side_margin = 5
             step = 0.1
-            total_distance = ld * 3.5
+            total_distance = ld * 6.0
             trajectory_position_data, trajectory_yaw_data = get_trajectory_points(
                 max(long_side_length - long_side_margin, 1.1),
                 max(short_side_length - long_side_margin, 1.0),

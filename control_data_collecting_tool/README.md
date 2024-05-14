@@ -11,9 +11,11 @@ ros2 launch autoware_launch planning_simulator.launch.xml rviz_config:=$(ros2 pk
 ```
 
 2 launch control_data_collecting_tool
+
 ```bash
 ros2 launch control_data_collecting_tool control_data_collecting_tool.launch.py
 ```
+
 3 `DataCollectingAreaSelectionTool`を使ってデータ収集領域を選択
 
 - 走行中にはデータ収集領域を変更できない
@@ -23,5 +25,6 @@ ros2 launch control_data_collecting_tool control_data_collecting_tool.launch.py
 5 `LOCAL`を押して走行を開始する
 
 ## TODO
+
 - ドキュメント整備
 - 不要な変数、パッケージ、ヘッダーの削除
