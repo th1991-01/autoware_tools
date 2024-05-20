@@ -23,6 +23,9 @@ import rclpy
 from rclpy.node import Node
 from scipy.spatial.transform import Rotation as R
 
+# TODO: ベタ書き解消
+wheel_base = 2.79 # sample_vehicle_launch/sample_vehicle_description/config/vehicle_info.param.yaml
+
 
 def getYaw(orientation_xyzw):
     return R.from_quat(orientation_xyzw.reshape(-1, 4)).as_euler("xyz")[:, 2]
@@ -37,7 +40,6 @@ def linearized_pure_pursuit_control(
     longitudinal_vel_ref_nearest,
 ):
     # control law equal to simple_trajectory_follower in autoware
-    wheel_base = 4.0
     pure_pursuit_acc_kp = 0.5
     pure_pursuit_lookahead_time = 3.0
     pure_pursuit_min_lookahead = 3.0
@@ -177,24 +179,11 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
         trajectory_orientation = np.array(trajectory_orientation)
         trajectory_longitudinal_velocity = np.array(trajectory_longitudinal_velocity)
 
-        # [2] compute control
-        # [2b] naive pure pursuit
-        lookahead_length = 5.0
         nearestIndex = (
             ((trajectory_position[:, :2] - present_position[:2]) ** 2).sum(axis=1).argmin()
         )
-        targetIndex = 1 * nearestIndex
-        while True:
-            tmp_distance = np.sqrt(
-                ((trajectory_position[targetIndex][:2] - present_position[:2]) ** 2).sum()
-            )
-            if tmp_distance > lookahead_length:
-                break
-            if targetIndex == (len(trajectory_position) - 1):
-                break
-            targetIndex += 1
-        # TODO: implement naive pure pursuit
 
+        # [2] compute control
         # [2a] linearized pure pursuit
         # nearestIndex = ((trajectory_position - present_position) ** 2).sum(axis=1).argmin()
         closest_traj_position = trajectory_position[nearestIndex]
@@ -208,6 +197,40 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
             closest_traj_yaw,
             closest_traj_longitudinal_velocity,
         )
+
+        # [2b] naive pure pursuit
+        lookahead_length = 5.0
+        targetIndex = 1 * nearestIndex
+        while True:
+            tmp_distance = np.sqrt(
+                ((trajectory_position[targetIndex][:2] - present_position[:2]) ** 2).sum()
+            )
+            if tmp_distance > lookahead_length:
+                break
+            if targetIndex == (len(trajectory_position) - 1):
+                break
+            targetIndex += 1
+        target_position = trajectory_position[targetIndex][:2]
+        target_yaw = getYaw(trajectory_orientation[targetIndex])
+        target_yaw_from_vehicle = present_yaw
+        if target_yaw_from_vehicle > np.pi:
+            target_yaw_from_vehicle -= 2 * np.pi
+        if target_yaw_from_vehicle < -np.pi:
+            target_yaw_from_vehicle += 2 * np.pi
+        rot_matrix = np.array(
+            [
+                [np.cos(target_yaw_from_vehicle), np.sin(target_yaw_from_vehicle)],
+                [-np.sin(target_yaw_from_vehicle), np.cos(target_yaw_from_vehicle)],
+            ]
+        ).reshape(2, 2)
+        # self.get_logger().warn("rot_matrix: `{}`".format(rot_matrix))
+        target_position_from_vehicle = rot_matrix @ (target_position - present_position[:2])
+        alpha = np.arctan(target_position_from_vehicle[1] / target_position_from_vehicle[0])
+        linx = trajectory_longitudinal_velocity[nearestIndex]
+        angz = 2.0 * linx * np.sin(alpha) / wheel_base
+        steer = np.arctan(angz * wheel_base / linx)
+
+        cmd[1] = steer
 
         control_cmd_msg = AckermannControlCommand()
         control_cmd_msg.stamp = (
