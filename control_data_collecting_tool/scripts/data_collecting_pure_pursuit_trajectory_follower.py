@@ -73,14 +73,20 @@ def linearized_pure_pursuit_control(
     return np.array([pure_pursuit_acc_cmd, pure_pursuit_steer_cmd])
 
 
-# def naive_pure_pursuit_control(
-#     pos_xy_obs, pos_yaw_obs, longitudinal_vel_obs, pos_xy_ref_nearest, pos_yaw_ref_nearest, longitudinal_vel_ref_nearest
-# ):
-#     linx = longitudinal_vel_ref_nearest
-#     angz = 2.0 * linx * np.sin(alpha)/L
-#     steer = angz_to_steer(linx, angz)
-#     acc = - 0.1 * (longitudinal_vel_obs - longitudinal_vel_ref_nearest)
-#     return np.array([acc, steer])
+def naive_pure_pursuit_control(
+    pos_xy_obs, pos_yaw_obs, longitudinal_vel_obs, pos_xy_ref_nearest
+):
+    rot_matrix = np.array(
+        [
+            [np.cos(pos_yaw_obs), np.sin(pos_yaw_obs)],
+            [-np.sin(pos_yaw_obs), np.cos(pos_yaw_obs)],
+        ]
+    ).reshape(2, 2)
+    target_position_from_vehicle = rot_matrix @ (pos_xy_ref_nearest - pos_xy_obs[:2])
+    alpha = np.arctan(target_position_from_vehicle[1] / target_position_from_vehicle[0])
+    angz = 2.0 * longitudinal_vel_obs * np.sin(alpha) / wheel_base
+    steer = np.arctan(angz * wheel_base / longitudinal_vel_obs)
+    return np.array([0, steer])
 
 
 class DataCollectingPurePursuitTrajetoryFollower(Node):
@@ -97,7 +103,6 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
 
         self.sub_trajectory_ = self.create_subscription(
             Trajectory,
-            # "/planning/scenario_planning/trajectory",
             "/data_collecting_trajectory",
             self.onTrajectory,
             1,
@@ -185,7 +190,6 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
 
         # [2] compute control
         # [2a] linearized pure pursuit
-        # nearestIndex = ((trajectory_position - present_position) ** 2).sum(axis=1).argmin()
         closest_traj_position = trajectory_position[nearestIndex]
         closest_traj_yaw = getYaw(trajectory_orientation[nearestIndex])
         closest_traj_longitudinal_velocity = trajectory_longitudinal_velocity[nearestIndex]
@@ -211,32 +215,20 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
                 break
             targetIndex += 1
         target_position = trajectory_position[targetIndex][:2]
-        target_yaw = getYaw(trajectory_orientation[targetIndex])
-        target_yaw_from_vehicle = present_yaw
-        if target_yaw_from_vehicle > np.pi:
-            target_yaw_from_vehicle -= 2 * np.pi
-        if target_yaw_from_vehicle < -np.pi:
-            target_yaw_from_vehicle += 2 * np.pi
-        rot_matrix = np.array(
-            [
-                [np.cos(target_yaw_from_vehicle), np.sin(target_yaw_from_vehicle)],
-                [-np.sin(target_yaw_from_vehicle), np.cos(target_yaw_from_vehicle)],
-            ]
-        ).reshape(2, 2)
-        # self.get_logger().warn("rot_matrix: `{}`".format(rot_matrix))
-        target_position_from_vehicle = rot_matrix @ (target_position - present_position[:2])
-        alpha = np.arctan(target_position_from_vehicle[1] / target_position_from_vehicle[0])
-        linx = trajectory_longitudinal_velocity[nearestIndex]
-        angz = 2.0 * linx * np.sin(alpha) / wheel_base
-        steer = np.arctan(angz * wheel_base / linx)
 
-        cmd[1] = steer
+        _cmd = naive_pure_pursuit_control(present_position[:2],
+            present_yaw,
+            trajectory_longitudinal_velocity[targetIndex],
+            trajectory_position[targetIndex][:2],
+            )
+
+        cmd[1] = _cmd[1]*1.0
 
         control_cmd_msg = AckermannControlCommand()
         control_cmd_msg.stamp = (
             control_cmd_msg.lateral.stamp
         ) = control_cmd_msg.longitudinal.stamp = (self.get_clock().now().to_msg())
-        control_cmd_msg.longitudinal.speed = closest_traj_longitudinal_velocity
+        control_cmd_msg.longitudinal.speed = trajectory_longitudinal_velocity[nearestIndex]
         control_cmd_msg.longitudinal.acceleration = cmd[0]
         control_cmd_msg.lateral.steering_tire_angle = cmd[1]
 
