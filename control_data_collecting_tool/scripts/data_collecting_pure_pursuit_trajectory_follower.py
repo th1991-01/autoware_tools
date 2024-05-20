@@ -24,7 +24,7 @@ from rclpy.node import Node
 from scipy.spatial.transform import Rotation as R
 
 # TODO: ベタ書き解消
-wheel_base = 2.79 # sample_vehicle_launch/sample_vehicle_description/config/vehicle_info.param.yaml
+wheel_base = 2.79  # sample_vehicle_launch/sample_vehicle_description/config/vehicle_info.param.yaml
 
 
 def getYaw(orientation_xyzw):
@@ -74,19 +74,27 @@ def linearized_pure_pursuit_control(
 
 
 def naive_pure_pursuit_control(
-    pos_xy_obs, pos_yaw_obs, longitudinal_vel_obs, pos_xy_ref_nearest
+    pos_xy_obs,
+    pos_yaw_obs,
+    longitudinal_vel_obs,
+    pos_xy_ref_target,
+    longitudinal_vel_ref_nearest,
 ):
+    pure_pursuit_acc_kp = 0.5
+    longitudinal_vel_err = longitudinal_vel_obs - longitudinal_vel_ref_nearest
+    pure_pursuit_acc_cmd = -pure_pursuit_acc_kp * longitudinal_vel_err
+
     rot_matrix = np.array(
         [
             [np.cos(pos_yaw_obs), np.sin(pos_yaw_obs)],
             [-np.sin(pos_yaw_obs), np.cos(pos_yaw_obs)],
         ]
     ).reshape(2, 2)
-    target_position_from_vehicle = rot_matrix @ (pos_xy_ref_nearest - pos_xy_obs[:2])
+    target_position_from_vehicle = rot_matrix @ (pos_xy_ref_target - pos_xy_obs[:2])
     alpha = np.arctan(target_position_from_vehicle[1] / target_position_from_vehicle[0])
-    angz = 2.0 * longitudinal_vel_obs * np.sin(alpha) / wheel_base
-    steer = np.arctan(angz * wheel_base / longitudinal_vel_obs)
-    return np.array([0, steer])
+    angz = 2.0 * longitudinal_vel_ref_nearest * np.sin(alpha) / wheel_base
+    steer = np.arctan(angz * wheel_base / longitudinal_vel_ref_nearest)
+    return np.array([pure_pursuit_acc_cmd, steer])
 
 
 class DataCollectingPurePursuitTrajetoryFollower(Node):
@@ -189,18 +197,18 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
         )
 
         # [2] compute control
-        # [2a] linearized pure pursuit
-        closest_traj_position = trajectory_position[nearestIndex]
-        closest_traj_yaw = getYaw(trajectory_orientation[nearestIndex])
-        closest_traj_longitudinal_velocity = trajectory_longitudinal_velocity[nearestIndex]
-        cmd = linearized_pure_pursuit_control(
-            present_position[:2],
-            present_yaw,
-            present_linear_velocity[0],
-            closest_traj_position[:2],
-            closest_traj_yaw,
-            closest_traj_longitudinal_velocity,
-        )
+        # [2a] linearized pure pursuit (deprecated)
+        # closest_traj_position = trajectory_position[nearestIndex]
+        # closest_traj_yaw = getYaw(trajectory_orientation[nearestIndex])
+        # closest_traj_longitudinal_velocity = trajectory_longitudinal_velocity[nearestIndex]
+        # cmd = linearized_pure_pursuit_control(
+        #     present_position[:2],
+        #     present_yaw,
+        #     present_linear_velocity[0],
+        #     closest_traj_position[:2],
+        #     closest_traj_yaw,
+        #     closest_traj_longitudinal_velocity,
+        # )
 
         # [2b] naive pure pursuit
         lookahead_length = 5.0
@@ -216,13 +224,13 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
             targetIndex += 1
         target_position = trajectory_position[targetIndex][:2]
 
-        _cmd = naive_pure_pursuit_control(present_position[:2],
+        cmd = naive_pure_pursuit_control(
+            present_position[:2],
             present_yaw,
-            trajectory_longitudinal_velocity[targetIndex],
+            present_linear_velocity[0],
             trajectory_position[targetIndex][:2],
-            )
-
-        cmd[1] = _cmd[1]*1.0
+            trajectory_longitudinal_velocity[targetIndex],
+        )
 
         control_cmd_msg = AckermannControlCommand()
         control_cmd_msg.stamp = (
