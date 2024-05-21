@@ -24,6 +24,7 @@ from numpy import arctan
 from numpy import cos
 from numpy import pi
 from numpy import sin
+from rcl_interfaces.msg import ParameterDescriptor
 import rclpy
 from rclpy.node import Node
 from scipy.spatial.transform import Rotation as R
@@ -33,10 +34,6 @@ from visualization_msgs.msg import MarkerArray
 debug_matplotlib_plot_flag = True
 if debug_matplotlib_plot_flag:
     import matplotlib.pyplot as plt
-
-# param
-window = 50  # window moving average smothing
-max_lateral_accel = 0.8  # TODO: 横G制約実装
 
 
 def getYaw(orientation_xyzw):
@@ -119,6 +116,40 @@ def get_trajectory_points(
 class DataCollectingTrajectoryPublisher(Node):
     def __init__(self):
         super().__init__("data_collecting_trajectory_publisher")
+
+        self.declare_parameter(
+            "max_lateral_accel",
+            0.5,
+            ParameterDescriptor(description="Max lateral acceleration limit [m/ss]"),
+        )
+
+        self.declare_parameter(
+            "mov_ave_window",
+            50,
+            ParameterDescriptor(description="Moving average smoothing window size"),
+        )
+
+        self.declare_parameter(
+            "target_longitudinal_velocity",
+            3.5,
+            ParameterDescriptor(description="Target longitudinal velocity [m/s]"),
+        )
+
+        self.declare_parameter(
+            "longitudinal_velocity_noise_amp",
+            0.1,
+            ParameterDescriptor(
+                description="Longitudinal velocity additional sine noise amplitude [m/s]"
+            ),
+        )
+
+        self.declare_parameter(
+            "longitudinal_velocity_noise_max_period",
+            0.1,
+            ParameterDescriptor(
+                description="Longitudinal velocity additional sine noise maximum period [s]"
+            ),
+        )
 
         self.trajectory_for_collecting_data_pub_ = self.create_publisher(
             Trajectory,
@@ -265,6 +296,7 @@ class DataCollectingTrajectoryPublisher(Node):
             # [2-2] smoothing figure eight path
             smoothing_flag = True
             if smoothing_flag:
+                window = self.get_parameter("mov_ave_window").get_parameter_value().integer_value
                 if window < len(trajectory_position_data):
                     w = np.ones(window) / window
                     augment_data = np.vstack(
@@ -280,7 +312,7 @@ class DataCollectingTrajectoryPublisher(Node):
                     trajectory_position_data[:, 1] = (
                         1 * np.convolve(augment_data[:, 1], w, mode="same")[window:-window]
                     )
-                    # TODO: ヨー角平滑化
+                    # TODO: smoothing yaw angle
 
             # [2-3] translation and rotation of origin
             rot_matrix = np.array(
@@ -294,10 +326,18 @@ class DataCollectingTrajectoryPublisher(Node):
             trajectory_yaw_data += yaw_offset
 
             # [2-4] compute velocity
+            max_lateral_accel = (
+                self.get_parameter("max_lateral_accel").get_parameter_value().double_value
+            )
             lateral_acc_limit = np.sqrt(max_lateral_accel * curve_data)
-            trajectory_longitudinal_velocity_data = 3.5 * np.ones(
+            target_longitudinal_velocity = (
+                self.get_parameter("target_longitudinal_velocity")
+                .get_parameter_value()
+                .double_value
+            )
+            trajectory_longitudinal_velocity_data = target_longitudinal_velocity * np.ones(
                 len(trajectory_position_data)
-            )  # TODO: ノイズ付加？（軌道側or制御側でやる？）
+            )  # TODO: adding noise?
 
             # [3] find near point index for local trajectory
             distance = np.sqrt(((trajectory_position_data - present_position[:2]) ** 2).sum(axis=1))
@@ -332,6 +372,7 @@ class DataCollectingTrajectoryPublisher(Node):
                     trajectory_longitudinal_velocity_data[:aug_data_length],
                 ]
             )
+
             pub_traj_len = min(int(50 / step), aug_data_length)
 
             # debug plot

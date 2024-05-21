@@ -33,8 +33,17 @@ ros2 launch control_data_collecting_tool control_data_collecting_tool.launch.py
 
 ## Parameter
 
-In `data_collecting_trajectory_publisher.py`, the following parameters can be set:
+Rosparam in `/data_collecting_trajectory_publisher` node:
 
-| Parameter                 | Type | Description                                                                                                                                                                                                                                                                                                                                                               |
-| ------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| max_lateral_accel    | float | max acceptable lateral acceleration for trajectory (absolute value). |
+| Name                                     | Type     | Description                                                    | Default value |
+| :--------------------------------------- | :------- | :------------------------------------------------------------- | :------------ |
+| `max_lateral_accel`                      | `double` | Max lateral acceleration limit [m/ss]                          | 0.5           |
+| `Moving average smoothing window size`   | `int`    | Moving average smoothing window size                           | 50            |
+| `mov_ave_window`                         | `double` | Target longitudinal velocity [m/s]                             | 3.5           |
+| `longitudinal_velocity_noise_amp`        | `double` | Longitudinal velocity additional sine noise amplitude [m/s]    | 0.1           |
+| `longitudinal_velocity_noise_max_period` | `double` | Longitudinal velocity additional sine noise maximum period [s] | 10.0          |
+
+Rosparam in `/data_collecting_pure_pursuit_trajectory_follower` node:
+| Name | Type | Description | Default value |
+| :------------------------------------- | :------- | :------------------------------------ | :------------ |
+| `max_lateral_accel` | `double` | Max lateral acceleration limit [m/ss] | 0.5 |
