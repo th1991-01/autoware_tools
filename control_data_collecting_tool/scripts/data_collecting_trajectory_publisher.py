@@ -30,9 +30,13 @@ from scipy.spatial.transform import Rotation as R
 from visualization_msgs.msg import Marker
 from visualization_msgs.msg import MarkerArray
 
+debug_matplotlib_plot_flag = True
+if debug_matplotlib_plot_flag:
+    import matplotlib.pyplot as plt
+
 # param
 window = 50  # window moving average smothing
-max_lateral_accel = 0.8 # TODO: 横G制約実装
+max_lateral_accel = 0.8  # TODO: 横G制約実装
 
 
 def getYaw(orientation_xyzw):
@@ -249,11 +253,18 @@ class DataCollectingTrajectoryPublisher(Node):
             if smoothing_flag:
                 if window < len(trajectory_position_data):
                     w = np.ones(window) / window
-                    trajectory_position_data[:, 0] = 1 * np.convolve(
-                        trajectory_position_data[:, 0], w, mode="same"
+                    augment_data = np.vstack(
+                        [
+                            trajectory_position_data[-window:],
+                            trajectory_position_data,
+                            trajectory_position_data[:window],
+                        ]
                     )
-                    trajectory_position_data[:, 1] = 1 * np.convolve(
-                        trajectory_position_data[:, 1], w, mode="same"
+                    trajectory_position_data[:, 0] = (
+                        1 * np.convolve(augment_data[:, 0], w, mode="same")[window:-window]
+                    )
+                    trajectory_position_data[:, 1] = (
+                        1 * np.convolve(augment_data[:, 1], w, mode="same")[window:-window]
                     )
                     # TODO: ヨー角平滑化
 
@@ -292,6 +303,7 @@ class DataCollectingTrajectoryPublisher(Node):
                     nearestIndex = 1 * index_array_near[i]
 
             # [4] publish trajectory
+            # [4-1] augment data
             aug_data_length = len(trajectory_position_data) // 4
             trajectory_position_data = np.vstack(
                 [trajectory_position_data, trajectory_position_data[:aug_data_length]]
@@ -305,9 +317,17 @@ class DataCollectingTrajectoryPublisher(Node):
                     trajectory_longitudinal_velocity_data[:aug_data_length],
                 ]
             )
+            pub_traj_len = min(int(50 / step), aug_data_length)
 
+            # debug plot
+            if debug_matplotlib_plot_flag:
+                plt.cla()
+                plt.plot(trajectory_position_data[nearestIndex : nearestIndex + pub_traj_len, 0])
+                plt.pause(0.02)
+
+            # [4-2] publish
             tmp_traj = Trajectory()
-            for i in range(min(int(50 / step), aug_data_length)):
+            for i in range(pub_traj_len):
                 tmp_traj_point = TrajectoryPoint()
                 tmp_traj_point.pose.position.x = trajectory_position_data[i + nearestIndex, 0]
                 tmp_traj_point.pose.position.y = trajectory_position_data[i + nearestIndex, 1]
