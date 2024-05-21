@@ -32,3 +32,9 @@ ros2 launch control_data_collecting_tool control_data_collecting_tool.launch.py
 5. Start data collecting by clicking the `LOCAL` button on `OperationMode` in `AutowareStatePanel`.
 
 ## Parameter
+
+In `data_collecting_trajectory_publisher.py`, the following parameters can be set:
+
+| Parameter                 | Type | Description                                                                                                                                                                                                                                                                                                                                                               |
+| ------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| max_lateral_accel    | float | max acceptable lateral acceleration for trajectory (absolute value). |
