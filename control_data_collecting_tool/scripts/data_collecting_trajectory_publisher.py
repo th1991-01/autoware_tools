@@ -47,12 +47,12 @@ def get_trajectory_points(
     yaw = t_array.copy()
 
     # Boundary points between circular and linear trajectory
-    _A = [-(b - a) / 2, a / 2]
-    _B = [(b - a) / 2, a / 2]
+    # _A = [-(b - a) / 2, a / 2]
+    # _B = [(b - a) / 2, a / 2]
     C = [-(b - a) / 2, -a / 2]
     D = [(b - a) / 2, -a / 2]
 
-    _O = [0.0, 0.0]  # origin
+    # _O = [0.0, 0.0]  # origin
     R = a / 2  # radious of the circle
     OL = [-(b - a) / 2, 0]  # center of the left circle
     OR = [(b - a) / 2, 0]  # center of the right circle
@@ -238,6 +238,18 @@ class DataCollectingTrajectoryPublisher(Node):
                 step,
                 total_distance,
             )
+
+            smoothing_flag = True
+            if smoothing_flag:
+                window = 50
+                if window < len(trajectory_position_data):
+                    w = np.ones(window) / window
+                    trajectory_position_data[:, 0] = 1 * np.convolve(
+                        trajectory_position_data[:, 0], w, mode="same"
+                    )
+                    trajectory_position_data[:, 1] = 1 * np.convolve(
+                        trajectory_position_data[:, 1], w, mode="same"
+                    )
 
             rot_matrix = np.array(
                 [
