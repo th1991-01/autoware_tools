@@ -223,14 +223,13 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
             if targetIndex == (len(trajectory_position) - 1):
                 break
             targetIndex += 1
-        target_position = trajectory_position[targetIndex][:2]
 
         cmd = naive_pure_pursuit_control(
             present_position[:2],
             present_yaw,
             present_linear_velocity[0],
             trajectory_position[targetIndex][:2],
-            trajectory_longitudinal_velocity[targetIndex],
+            trajectory_longitudinal_velocity[nearestIndex],
         )
 
         control_cmd_msg = AckermannControlCommand()

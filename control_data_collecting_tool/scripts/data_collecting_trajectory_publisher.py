@@ -182,6 +182,14 @@ class DataCollectingTrajectoryPublisher(Node):
                     self._present_kinematic_state.pose.pose.orientation.w,
                 ]
             )
+            present_linear_velocity = np.array(
+                [
+                    self._present_kinematic_state.twist.twist.linear.x,
+                    self._present_kinematic_state.twist.twist.linear.y,
+                    self._present_kinematic_state.twist.twist.linear.z,
+                ]
+            )
+
             present_yaw = getYaw(present_orientation)[0]
 
             data_collecting_area = np.array(
@@ -286,7 +294,8 @@ class DataCollectingTrajectoryPublisher(Node):
             trajectory_yaw_data += yaw_offset
 
             # [2-4] compute velocity
-            trajectory_longitudinal_velocity_data = 3.0 * np.ones(
+            lateral_acc_limit = np.sqrt(max_lateral_accel * curve_data)
+            trajectory_longitudinal_velocity_data = 3.5 * np.ones(
                 len(trajectory_position_data)
             )  # TODO: ノイズ付加？（軌道側or制御側でやる？）
 
@@ -328,8 +337,6 @@ class DataCollectingTrajectoryPublisher(Node):
             # debug plot
             if debug_matplotlib_plot_flag:
                 plt.cla()
-                a = pub_traj_len + pub_traj_len
-                b = nearestIndex + nearestIndex
                 step_size_array = np.sqrt(
                     ((trajectory_position_data[1:] - trajectory_position_data[:-1]) ** 2).sum(
                         axis=1
@@ -338,23 +345,24 @@ class DataCollectingTrajectoryPublisher(Node):
                 distance = np.zeros(len(trajectory_position_data))
                 for i in range(1, len(trajectory_position_data)):
                     distance[i] = distance[i - 1] + step_size_array[i - 1]
-                curve_data = np.hstack(
+                distance - distance[nearestIndex]
+                lateral_acc_limit = np.hstack(
                     [
-                        curve_data,
-                        curve_data[:aug_data_length],
+                        lateral_acc_limit,
+                        lateral_acc_limit[:aug_data_length],
                     ]
                 )
-                lateral_acc_limit = np.sqrt(max_lateral_accel * curve_data)
                 trajectory_longitudinal_velocity_data = np.minimum(
                     trajectory_longitudinal_velocity_data, lateral_acc_limit
                 )
+                plt.plot(0, present_linear_velocity[0], "o", label="observation")
                 plt.plot(
-                    distance[nearestIndex : nearestIndex + pub_traj_len] - distance[nearestIndex],
+                    distance[nearestIndex : nearestIndex + pub_traj_len],
                     lateral_acc_limit[nearestIndex : nearestIndex + pub_traj_len],
                     label="lateral_acc_limit",
                 )
                 plt.plot(
-                    distance[nearestIndex : nearestIndex + pub_traj_len] - distance[nearestIndex],
+                    distance[nearestIndex : nearestIndex + pub_traj_len],
                     trajectory_longitudinal_velocity_data[
                         nearestIndex : nearestIndex + pub_traj_len
                     ],
