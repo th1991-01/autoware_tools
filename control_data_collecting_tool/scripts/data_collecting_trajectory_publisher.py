@@ -30,6 +30,10 @@ from scipy.spatial.transform import Rotation as R
 from visualization_msgs.msg import Marker
 from visualization_msgs.msg import MarkerArray
 
+# param
+window = 50  # window moving average smothing
+max_lateral_accel = 0.8 # TODO: 横G制約実装
+
 
 def getYaw(orientation_xyzw):
     return R.from_quat(orientation_xyzw.reshape(-1, 4)).as_euler("xyz")[:, 2]
@@ -208,6 +212,7 @@ class DataCollectingTrajectoryPublisher(Node):
             )
 
             # [2] compute whole trajectory
+            # [2-1] generate figure eight path
             if la > lb:
                 long_side_length = la
                 short_side_length = lb
@@ -239,9 +244,9 @@ class DataCollectingTrajectoryPublisher(Node):
                 total_distance,
             )
 
+            # [2-2] smoothing figure eight path
             smoothing_flag = True
             if smoothing_flag:
-                window = 50
                 if window < len(trajectory_position_data):
                     w = np.ones(window) / window
                     trajectory_position_data[:, 0] = 1 * np.convolve(
@@ -250,7 +255,9 @@ class DataCollectingTrajectoryPublisher(Node):
                     trajectory_position_data[:, 1] = 1 * np.convolve(
                         trajectory_position_data[:, 1], w, mode="same"
                     )
+                    # TODO: ヨー角平滑化
 
+            # [2-3] translation and rotation of origin
             rot_matrix = np.array(
                 [
                     [np.cos(yaw_offset), -np.sin(yaw_offset)],
@@ -261,7 +268,12 @@ class DataCollectingTrajectoryPublisher(Node):
             trajectory_position_data += rectangle_center_position
             trajectory_yaw_data += yaw_offset
 
-            # [3] find near point for local trajectory
+            # [2-4] compute velocity
+            trajectory_longitudinal_velocity_data = 2.5 * np.ones(
+                len(trajectory_position_data)
+            )  # TODO: ノイズ付加？（軌道側or制御側でやる？）
+
+            # [3] find near point index for local trajectory
             distance = np.sqrt(((trajectory_position_data - present_position[:2]) ** 2).sum(axis=1))
             index_array_near = np.argsort(distance)
 
@@ -287,6 +299,12 @@ class DataCollectingTrajectoryPublisher(Node):
             trajectory_yaw_data = np.hstack(
                 [trajectory_yaw_data, trajectory_yaw_data[:aug_data_length]]
             )
+            trajectory_longitudinal_velocity_data = np.hstack(
+                [
+                    trajectory_longitudinal_velocity_data,
+                    trajectory_longitudinal_velocity_data[:aug_data_length],
+                ]
+            )
 
             tmp_traj = Trajectory()
             for i in range(min(int(50 / step), aug_data_length)):
@@ -304,7 +322,9 @@ class DataCollectingTrajectoryPublisher(Node):
                     trajectory_yaw_data[i + nearestIndex] / 2
                 )
 
-                tmp_traj_point.longitudinal_velocity_mps = 2.5
+                tmp_traj_point.longitudinal_velocity_mps = trajectory_longitudinal_velocity_data[
+                    i + nearestIndex
+                ]
                 tmp_traj.points.append(tmp_traj_point)
 
             self.trajectory_for_collecting_data_pub_.publish(tmp_traj)
