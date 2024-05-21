@@ -1,10 +1,13 @@
 # Control data collecting tools
 
-This package provides tools for collecting data by pure pursuit control within a specified rectangular area.
+This package provides tools for automatically collecting data by pure pursuit control within a specified rectangular area.
 
-<img src="resource/demo.gif" width="900">
+<img src="resource/demo.gif" width="400">
 
-## Purpose
+## TODO
+* 画像取り直し
+* パラメータのデフォルトとコードを合わせる
+* 速度へのノイズ付加をやる
 
 ## How to use
 
@@ -33,7 +36,7 @@ ros2 launch control_data_collecting_tool control_data_collecting_tool.launch.py
 
 ## Parameter
 
-Rosparam in `/data_collecting_trajectory_publisher` node:
+Ros2 params in `/data_collecting_trajectory_publisher` node:
 
 | Name                                     | Type     | Description                                                           | Default value |
 | :--------------------------------------- | :------- | :-------------------------------------------------------------------- | :------------ |
@@ -43,7 +46,7 @@ Rosparam in `/data_collecting_trajectory_publisher` node:
 | `longitudinal_velocity_noise_amp`        | `double` | Target longitudinal velocity additional sine noise amplitude [m/s]    | 0.1           |
 | `longitudinal_velocity_noise_max_period` | `double` | Target longitudinal velocity additional sine noise maximum period [s] | 10.0          |
 
-Rosparam in `/data_collecting_pure_pursuit_trajectory_follower` node:
+Ros2 params in `/data_collecting_pure_pursuit_trajectory_follower` node:
 
 | Name                                  | Type     | Description                                            | Default value |
 | :------------------------------------ | :------- | :----------------------------------------------------- | :------------ |
@@ -52,5 +55,5 @@ Rosparam in `/data_collecting_pure_pursuit_trajectory_follower` node:
 | `naive_pure_pursuit_lookahead_length` | `double` | Pure pursuit (naive version) lookahead length [m]      | 5.0           |
 | `acc_noise_amp`                       | `double` | Accel command additional sine noise amplitude [m/ss]   | 0.01          |
 | `acc_noise_max_period`                | `double` | Accel command additional sine noise maximum period [s] | 10.0          |
-| `steer_noise_amp`                     | `double` | Steer command additional sine noise amplitude [m/ss]   | 0.01          |
+| `steer_noise_amp`                     | `double` | Steer command additional sine noise amplitude [rad]    | 0.01          |
 | `steer_noise_max_period`              | `double` | Steer command additional sine noise maximum period [s] | 10.0          |

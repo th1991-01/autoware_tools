@@ -131,7 +131,7 @@ class DataCollectingTrajectoryPublisher(Node):
 
         self.declare_parameter(
             "target_longitudinal_velocity",
-            3.5,
+            3.0,
             ParameterDescriptor(description="Target longitudinal velocity [m/s]"),
         )
 
@@ -145,7 +145,7 @@ class DataCollectingTrajectoryPublisher(Node):
 
         self.declare_parameter(
             "longitudinal_velocity_noise_max_period",
-            0.1,
+            10.0,
             ParameterDescriptor(
                 description="Target longitudinal velocity additional sine noise maximum period [s]"
             ),
@@ -185,6 +185,8 @@ class DataCollectingTrajectoryPublisher(Node):
 
         self._present_kinematic_state = None
         self._data_collecting_area_polygon = None
+
+        self.vel_noise_list = []
 
     def onOdometry(self, msg):
         self._present_kinematic_state = msg
@@ -235,6 +237,19 @@ class DataCollectingTrajectoryPublisher(Node):
                     for i in range(4)
                 ]
             )
+
+            # tmp_noise_amp = (
+            #     np.random.rand()
+            #     * self.get_parameter("acc_noise_amp").get_parameter_value().double_value
+            # )
+            # tmp_noise_period = (
+            #     np.random.rand()
+            #     * self.get_parameter("acc_noise_max_period").get_parameter_value().double_value
+            # )
+            # dt = self.timer_period_callback
+            # noise_data_num = max(4, int(tmp_noise_period / dt))
+            # for i in range(noise_data_num):
+            #     self.acc_noise_list.append(tmp_noise_amp * np.sin(2.0 * np.pi * i / noise_data_num))
 
             # [1] compute an approximate rectangle
             l1 = np.sqrt(((data_collecting_area[0, :2] - data_collecting_area[1, :2]) ** 2).sum())
@@ -387,6 +402,12 @@ class DataCollectingTrajectoryPublisher(Node):
                 for i in range(1, len(trajectory_position_data)):
                     distance[i] = distance[i - 1] + step_size_array[i - 1]
                 distance -= distance[nearestIndex]
+                time_width_array = step_size_array / trajectory_longitudinal_velocity_data[:-1]
+                timestamp = np.zeros(len(trajectory_position_data))
+                for i in range(1, len(trajectory_position_data)):
+                    timestamp[i] = timestamp[i - 1] + time_width_array[i - 1]
+                timestamp -= timestamp[nearestIndex]
+
                 lateral_acc_limit = np.hstack(
                     [
                         lateral_acc_limit,
@@ -396,21 +417,24 @@ class DataCollectingTrajectoryPublisher(Node):
                 trajectory_longitudinal_velocity_data = np.minimum(
                     trajectory_longitudinal_velocity_data, lateral_acc_limit
                 )
-                plt.plot(0, present_linear_velocity[0], "o", label="observation")
+                plt.plot(0, present_linear_velocity[0], "o", label="current_obs")
                 plt.plot(
-                    distance[nearestIndex : nearestIndex + pub_traj_len],
+                    # distance[nearestIndex : nearestIndex + pub_traj_len],
+                    timestamp[nearestIndex : nearestIndex + pub_traj_len],
                     lateral_acc_limit[nearestIndex : nearestIndex + pub_traj_len],
                     label="lateral_acc_limit",
                 )
                 plt.plot(
-                    distance[nearestIndex : nearestIndex + pub_traj_len],
+                    # distance[nearestIndex : nearestIndex + pub_traj_len],
+                    timestamp[nearestIndex : nearestIndex + pub_traj_len],
                     trajectory_longitudinal_velocity_data[
                         nearestIndex : nearestIndex + pub_traj_len
                     ],
                     label="target",
                 )
                 plt.ylim([-0.5, 12.5])
-                plt.xlabel("future driving distance [m]")
+                # plt.xlabel("future driving distance [m]")
+                plt.xlabel("future timestamp [s]")
                 plt.ylabel("longitudinal_velocity [m/s]")
                 plt.legend()
                 plt.pause(0.01)

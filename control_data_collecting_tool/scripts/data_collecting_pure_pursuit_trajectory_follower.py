@@ -24,6 +24,10 @@ import rclpy
 from rclpy.node import Node
 from scipy.spatial.transform import Rotation as R
 
+debug_matplotlib_plot_flag = True
+if debug_matplotlib_plot_flag:
+    import matplotlib.pyplot as plt
+
 
 def getYaw(orientation_xyzw):
     return R.from_quat(orientation_xyzw.reshape(-1, 4)).as_euler("xyz")[:, 2]
@@ -53,14 +57,26 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
 
         self.declare_parameter(
             "acc_noise_amp",
-            0.1,
-            ParameterDescriptor(description="Accel cmd additional sine noise amplitude [m/s]"),
+            0.05,
+            ParameterDescriptor(description="Accel cmd additional sine noise amplitude [m/ss]"),
         )
 
         self.declare_parameter(
             "acc_noise_max_period",
-            0.1,
+            10.0,
             ParameterDescriptor(description="Accel cmd additional sine noise maximum period [s]"),
+        )
+
+        self.declare_parameter(
+            "steer_noise_amp",
+            0.01,
+            ParameterDescriptor(description="Steer cmd additional sine noise amplitude [rad]"),
+        )
+
+        self.declare_parameter(
+            "steer_noise_max_period",
+            10.0,
+            ParameterDescriptor(description="Steer cmd additional sine noise maximum period [s]"),
         )
 
         self.sub_odometry_ = self.create_subscription(
@@ -96,6 +112,13 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
 
         self._present_kinematic_state = None
         self._present_trajectory = None
+
+        self.acc_noise_list = []
+        self.steer_noise_list = []
+        self.acc_history = []
+        self.steer_history = []
+        self.acc_noise_history = []
+        self.steer_noise_history = []
 
     def onOdometry(self, msg):
         self._present_kinematic_state = msg
@@ -180,7 +203,7 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
         return np.array([pure_pursuit_acc_cmd, steer])
 
     def control(self):
-        # [1] receive topic
+        # [0] receive topic
         present_position = np.array(
             [
                 self._present_kinematic_state.pose.pose.position.x,
@@ -230,8 +253,38 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
             ((trajectory_position[:, :2] - present_position[:2]) ** 2).sum(axis=1).argmin()
         )
 
-        # [2] compute control
-        # [2a] linearized pure pursuit (deprecated)
+        # prepare noise
+        if len(self.acc_noise_list) == 0:
+            tmp_noise_amp = (
+                np.random.rand()
+                * self.get_parameter("acc_noise_amp").get_parameter_value().double_value
+            )
+            tmp_noise_period = (
+                np.random.rand()
+                * self.get_parameter("acc_noise_max_period").get_parameter_value().double_value
+            )
+            dt = self.timer_period_callback
+            noise_data_num = max(4, int(tmp_noise_period / dt))
+            for i in range(noise_data_num):
+                self.acc_noise_list.append(tmp_noise_amp * np.sin(2.0 * np.pi * i / noise_data_num))
+        if len(self.steer_noise_list) == 0:
+            tmp_noise_amp = (
+                np.random.rand()
+                * self.get_parameter("steer_noise_amp").get_parameter_value().double_value
+            )
+            tmp_noise_period = (
+                np.random.rand()
+                * self.get_parameter("steer_noise_max_period").get_parameter_value().double_value
+            )
+            dt = self.timer_period_callback
+            noise_data_num = max(4, int(tmp_noise_period / dt))
+            for i in range(noise_data_num):
+                self.steer_noise_list.append(
+                    tmp_noise_amp * np.sin(2.0 * np.pi * i / noise_data_num)
+                )
+
+        # [1] compute control
+        # [1a] linearized pure pursuit (deprecated)
         # closest_traj_position = trajectory_position[nearestIndex]
         # closest_traj_yaw = getYaw(trajectory_orientation[nearestIndex])
         # closest_traj_longitudinal_velocity = trajectory_longitudinal_velocity[nearestIndex]
@@ -244,7 +297,7 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
         #     closest_traj_longitudinal_velocity,
         # )
 
-        # [2b] naive pure pursuit
+        # [1b] naive pure pursuit
         targetIndex = 1 * nearestIndex
         naive_pure_pursuit_lookahead_length = (
             self.get_parameter("naive_pure_pursuit_lookahead_length")
@@ -268,6 +321,13 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
             trajectory_position[targetIndex][:2],
             trajectory_longitudinal_velocity[nearestIndex],
         )
+        cmd_without_noise = 1 * cmd
+
+        tmp_acc_noise = self.acc_noise_list.pop(0)
+        tmp_steer_noise = self.steer_noise_list.pop(0)
+
+        cmd[0] += tmp_acc_noise
+        cmd[1] += tmp_steer_noise
 
         control_cmd_msg = AckermannControlCommand()
         control_cmd_msg.stamp = (
@@ -283,6 +343,41 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
         gear_cmd_msg.stamp = control_cmd_msg.lateral.stamp
         gear_cmd_msg.command = GearCommand.DRIVE
         self.gear_cmd_pub_.publish(gear_cmd_msg)
+
+        # debug plot
+        if debug_matplotlib_plot_flag:
+            self.acc_history.append(1 * cmd[0])
+            self.steer_history.append(1 * cmd[1])
+            self.acc_noise_history.append(tmp_acc_noise)
+            self.steer_noise_history.append(tmp_steer_noise)
+            max_plot_len = 666
+            if len(self.acc_history) > max_plot_len:
+                self.acc_history.pop(0)
+                self.steer_history.pop(0)
+                self.acc_noise_history.pop(0)
+                self.steer_noise_history.pop(0)
+            dt = self.timer_period_callback
+            timestamp = -dt * np.array(range(len(self.steer_history)))[::-1]
+            plt.cla()
+            plt.clf()
+            plt.subplot(2, 1, 1)
+            plt.plot(0, cmd[0], "o", label="current_acc")
+            plt.plot(0, cmd_without_noise[0], "o", label="acc cmd without noise")
+            plt.plot(timestamp, self.acc_history, "-", label="acc cmd history")
+            plt.plot(timestamp, self.acc_noise_history, "-", label="acc noise history")
+            plt.ylim([-1, 3])
+            plt.ylabel("acc [m/ss]")
+            plt.legend()
+            plt.subplot(2, 1, 2)
+            plt.plot(0, cmd[1], "o", label="current_steer")
+            plt.plot(0, cmd_without_noise[1], "o", label="steer without noise")
+            plt.plot(timestamp, self.steer_history, "-", label="steer cmd history")
+            plt.plot(timestamp, self.steer_noise_history, "-", label="steer noise history")
+            plt.ylim([-1, 1])
+            plt.xlabel("future timestamp [s]")
+            plt.ylabel("steer [rad]")
+            plt.legend()
+            plt.pause(0.01)
 
 
 def main(args=None):
