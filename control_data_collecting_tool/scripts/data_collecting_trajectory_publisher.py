@@ -71,6 +71,8 @@ def get_trajectory_points(
     AC = BD
     CO = OB
 
+    curve = t_array.copy()
+
     i_end = t_array.shape[0]
     for i, t in enumerate(t_array):
         if t > OB + BD + AD + AC + CO:
@@ -80,34 +82,38 @@ def get_trajectory_points(
             x[i] = (b - a) * t / (2 * OB)
             y[i] = a * t / (2 * OB)
             yaw[i] = θB
+            curve[i] = 1e10
         if OB <= t and t <= OB + BD:
             t1 = t - OB
             t1_rad = t1 / R
             x[i] = OR[0] + R * cos(pi / 2 - t1_rad)
             y[i] = OR[1] + R * sin(pi / 2 - t1_rad)
             yaw[i] = -t1_rad
+            curve[i] = R
         if OB + BD <= t and t <= OB + BD + AD:
             t2 = t - (OB + BD)
             x[i] = D[0] - (b - a) * t2 / (2 * OB)
             y[i] = D[1] + a * t2 / (2 * OB)
             yaw[i] = pi - θB
+            curve[i] = 1e10
         if OB + BD + AD <= t and t <= OB + BD + AD + AC:
             t3 = t - (OB + BD + AD)
             t3_rad = t3 / R
             x[i] = OL[0] + R * cos(pi / 2 + t3_rad)
             y[i] = OL[1] + R * sin(pi / 2 + t3_rad)
             yaw[i] = pi + t3_rad
+            curve[i] = R
         if OB + BD + AD + AC <= t and t <= OB + BD + AD + AC + CO:
             t4 = t - (OB + BD + AD + AC)
             x[i] = C[0] + (b - a) * t4 / (2 * OB)
             y[i] = C[1] + a * t4 / (2 * OB)
             yaw[i] = θB
-
+            curve[i] = 1e10
     # drop rest
     x = x[:i_end]
     y = y[:i_end]
     yaw = yaw[:i_end]
-    return np.array([x, y]).T, yaw
+    return np.array([x, y]).T, yaw, curve[:i_end]
 
 
 class DataCollectingTrajectoryPublisher(Node):
@@ -208,11 +214,11 @@ class DataCollectingTrajectoryPublisher(Node):
 
             vec_from_center_to_point0_data = data_collecting_area[0, :2] - rectangle_center_position
             vec_from_center_to_point1_data = data_collecting_area[1, :2] - rectangle_center_position
-            unitvec_from_center_to_point0_data = vec_from_center_to_point0_data / np.sqrt(
-                (vec_from_center_to_point0_data**2).sum()
+            unitvec_from_center_to_point0_data = vec_from_center_to_point0_data / (
+                np.sqrt((vec_from_center_to_point0_data**2).sum()) + 1e-10
             )
-            unitvec_from_center_to_point1_data = vec_from_center_to_point1_data / np.sqrt(
-                (vec_from_center_to_point1_data**2).sum()
+            unitvec_from_center_to_point1_data = vec_from_center_to_point1_data / (
+                np.sqrt((vec_from_center_to_point1_data**2).sum()) + 1e-10
             )
 
             # [2] compute whole trajectory
@@ -241,7 +247,7 @@ class DataCollectingTrajectoryPublisher(Node):
             step = 0.1
             total_distance = ld * (1 + np.pi) * 2
 
-            trajectory_position_data, trajectory_yaw_data = get_trajectory_points(
+            trajectory_position_data, trajectory_yaw_data, curve_data = get_trajectory_points(
                 max(long_side_length - long_side_margin, 1.1),
                 max(short_side_length - long_side_margin, 1.0),
                 step,
@@ -280,7 +286,7 @@ class DataCollectingTrajectoryPublisher(Node):
             trajectory_yaw_data += yaw_offset
 
             # [2-4] compute velocity
-            trajectory_longitudinal_velocity_data = 2.5 * np.ones(
+            trajectory_longitudinal_velocity_data = 3.0 * np.ones(
                 len(trajectory_position_data)
             )  # TODO: ノイズ付加？（軌道側or制御側でやる？）
 
@@ -292,8 +298,6 @@ class DataCollectingTrajectoryPublisher(Node):
             nearestIndex = None
             for i in range(len(index_array_near)):
                 if (distance[index_array_near[0]] + step * 10) < distance[index_array_near[i]]:
-                    if nearestIndex is None:
-                        nearestIndex = index_array_near[0]
                     break
                 tmp_cos_diff_yaw_value = np.cos(
                     trajectory_yaw_data[index_array_near[i]] - present_yaw
@@ -301,6 +305,8 @@ class DataCollectingTrajectoryPublisher(Node):
                 if tmp_cos_diff_yaw_value > max_cos_diff_yaw_value:
                     max_cos_diff_yaw_value = 1.0 * tmp_cos_diff_yaw_value
                     nearestIndex = 1 * index_array_near[i]
+            if nearestIndex is None:
+                nearestIndex = index_array_near[0]
 
             # [4] publish trajectory
             # [4-1] augment data
@@ -322,8 +328,43 @@ class DataCollectingTrajectoryPublisher(Node):
             # debug plot
             if debug_matplotlib_plot_flag:
                 plt.cla()
-                plt.plot(trajectory_position_data[nearestIndex : nearestIndex + pub_traj_len, 0])
-                plt.pause(0.02)
+                a = pub_traj_len + pub_traj_len
+                b = nearestIndex + nearestIndex
+                step_size_array = np.sqrt(
+                    ((trajectory_position_data[1:] - trajectory_position_data[:-1]) ** 2).sum(
+                        axis=1
+                    )
+                )
+                distance = np.zeros(len(trajectory_position_data))
+                for i in range(1, len(trajectory_position_data)):
+                    distance[i] = distance[i - 1] + step_size_array[i - 1]
+                curve_data = np.hstack(
+                    [
+                        curve_data,
+                        curve_data[:aug_data_length],
+                    ]
+                )
+                lateral_acc_limit = np.sqrt(max_lateral_accel * curve_data)
+                trajectory_longitudinal_velocity_data = np.minimum(
+                    trajectory_longitudinal_velocity_data, lateral_acc_limit
+                )
+                plt.plot(
+                    distance[nearestIndex : nearestIndex + pub_traj_len] - distance[nearestIndex],
+                    lateral_acc_limit[nearestIndex : nearestIndex + pub_traj_len],
+                    label="lateral_acc_limit",
+                )
+                plt.plot(
+                    distance[nearestIndex : nearestIndex + pub_traj_len] - distance[nearestIndex],
+                    trajectory_longitudinal_velocity_data[
+                        nearestIndex : nearestIndex + pub_traj_len
+                    ],
+                    label="target",
+                )
+                plt.ylim([-0.5, 12.5])
+                plt.xlabel("future driving distance [m]")
+                plt.ylabel("longitudinal_velocity [m/s]")
+                plt.legend()
+                plt.pause(0.01)
 
             # [4-2] publish
             tmp_traj = Trajectory()
@@ -352,7 +393,7 @@ class DataCollectingTrajectoryPublisher(Node):
             # [4] publish marker_array
             marker_array = MarkerArray()
 
-            # [4b] local trajectory
+            # [4a] local trajectory
             marker_traj2 = Marker()
             marker_traj2.type = 4
             marker_traj2.id = 1
@@ -382,7 +423,7 @@ class DataCollectingTrajectoryPublisher(Node):
 
             marker_array.markers.append(marker_traj2)
 
-            # [4a] whole trajectory
+            # [4b] whole trajectory
             marker_traj = Marker()
             marker_traj.type = 4
             marker_traj.id = 0

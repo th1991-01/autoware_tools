@@ -25,6 +25,7 @@ from scipy.spatial.transform import Rotation as R
 
 # TODO: ベタ書き解消
 wheel_base = 2.79  # sample_vehicle_launch/sample_vehicle_description/config/vehicle_info.param.yaml
+naive_pure_pursuit_lookahead_length = 5.0
 
 
 def getYaw(orientation_xyzw):
@@ -211,13 +212,13 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
         # )
 
         # [2b] naive pure pursuit
-        lookahead_length = 5.0
+
         targetIndex = 1 * nearestIndex
         while True:
             tmp_distance = np.sqrt(
                 ((trajectory_position[targetIndex][:2] - present_position[:2]) ** 2).sum()
             )
-            if tmp_distance > lookahead_length:
+            if tmp_distance > naive_pure_pursuit_lookahead_length:
                 break
             if targetIndex == (len(trajectory_position) - 1):
                 break
