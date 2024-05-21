@@ -345,7 +345,7 @@ class DataCollectingTrajectoryPublisher(Node):
                 distance = np.zeros(len(trajectory_position_data))
                 for i in range(1, len(trajectory_position_data)):
                     distance[i] = distance[i - 1] + step_size_array[i - 1]
-                distance - distance[nearestIndex]
+                distance -= distance[nearestIndex]
                 lateral_acc_limit = np.hstack(
                     [
                         lateral_acc_limit,

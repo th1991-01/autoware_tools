@@ -2,29 +2,33 @@
 
 This package provides a tool for collecting data by pure pursuit control within a specified rectangular area.
 
-## 使い方（開発中バージョン）
+<img src="resource/demo.gif" width="400">
 
-1 launch autoware
+## Purpose
+
+## How to use
+
+1. Launch Autoware.
 
 ```bash
+source ~/autoware/install/setup.bash
 ros2 launch autoware_launch planning_simulator.launch.xml rviz_config:=$(ros2 pkg prefix control_data_collecting_tool)/share/control_data_collecting_tool/rviz/autoware.rviz map_path:=$HOME/autoware_map/sample-map-planning vehicle_model:=sample_vehicle sensor_model:=sample_sensor_kit
 ```
 
-2 launch control_data_collecting_tool
+2. Set an initial pose, see [here](https://autowarefoundation.github.io/autoware-documentation/main/tutorials/ad-hoc-simulation/planning-simulation/#2-set-an-initial-pose-for-the-ego-vehicle)
+
+3. Launch control_data_collecting_tool.
 
 ```bash
+source ~/autoware/install/setup.bash
 ros2 launch control_data_collecting_tool control_data_collecting_tool.launch.py
 ```
 
-3 `DataCollectingAreaSelectionTool`を使ってデータ収集領域を選択
+4. Select the data collecting area using `DataCollectingAreaSelectionTool` plugin, see gif.
 
-- 走行中にはデータ収集領域を変更できない
+> [!NOTE]
+> You cannot change the data collecting area while driving.
 
-4 `2D Pose Estimate`を使って initial poseを置く
+5. Start data collecting by clicking the `LOCAL` button on `OperationMode` in `AutowareStatePanel`.
 
-5 `LOCAL`を押して走行を開始する
-
-## TODO
-
-- ドキュメント整備
-- 不要な変数、パッケージ、ヘッダーの削除
+## Parameter
