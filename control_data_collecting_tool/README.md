@@ -1,6 +1,6 @@
 # Control data collecting tools
 
-This package provides a tool for collecting data by pure pursuit control within a specified rectangular area.
+This package provides tools for collecting data by pure pursuit control within a specified rectangular area.
 
 <img src="resource/demo.gif" width="900">
 
@@ -35,15 +35,22 @@ ros2 launch control_data_collecting_tool control_data_collecting_tool.launch.py
 
 Rosparam in `/data_collecting_trajectory_publisher` node:
 
-| Name                                     | Type     | Description                                                    | Default value |
-| :--------------------------------------- | :------- | :------------------------------------------------------------- | :------------ |
-| `max_lateral_accel`                      | `double` | Max lateral acceleration limit [m/ss]                          | 0.5           |
-| `Moving average smoothing window size`   | `int`    | Moving average smoothing window size                           | 50            |
-| `mov_ave_window`                         | `double` | Target longitudinal velocity [m/s]                             | 3.5           |
-| `longitudinal_velocity_noise_amp`        | `double` | Longitudinal velocity additional sine noise amplitude [m/s]    | 0.1           |
-| `longitudinal_velocity_noise_max_period` | `double` | Longitudinal velocity additional sine noise maximum period [s] | 10.0          |
+| Name                                     | Type     | Description                                                           | Default value |
+| :--------------------------------------- | :------- | :-------------------------------------------------------------------- | :------------ |
+| `max_lateral_accel`                      | `double` | Max lateral acceleration limit [m/ss]                                 | 0.5           |
+| `Moving average smoothing window size`   | `int`    | Moving average smoothing window size                                  | 50            |
+| `mov_ave_window`                         | `double` | Target longitudinal velocity [m/s]                                    | 3.5           |
+| `longitudinal_velocity_noise_amp`        | `double` | Target longitudinal velocity additional sine noise amplitude [m/s]    | 0.1           |
+| `longitudinal_velocity_noise_max_period` | `double` | Target longitudinal velocity additional sine noise maximum period [s] | 10.0          |
 
 Rosparam in `/data_collecting_pure_pursuit_trajectory_follower` node:
-| Name | Type | Description | Default value |
-| :------------------------------------- | :------- | :------------------------------------ | :------------ |
-| `max_lateral_accel` | `double` | Max lateral acceleration limit [m/ss] | 0.5 |
+
+| Name                                  | Type     | Description                                            | Default value |
+| :------------------------------------ | :------- | :----------------------------------------------------- | :------------ |
+| `wheel_base`                          | `double` | Wheel base [m]                                         | 2.79          |
+| `pure_pursuit_acc_kp`                 | `double` | Pure pursuit accel command propotional gain            | 0.5           |
+| `naive_pure_pursuit_lookahead_length` | `double` | Pure pursuit (naive version) lookahead length [m]      | 5.0           |
+| `acc_noise_amp`                       | `double` | Accel command additional sine noise amplitude [m/ss]   | 0.01          |
+| `acc_noise_max_period`                | `double` | Accel command additional sine noise maximum period [s] | 10.0          |
+| `steer_noise_amp`                     | `double` | Steer command additional sine noise amplitude [m/ss]   | 0.01          |
+| `steer_noise_max_period`              | `double` | Steer command additional sine noise maximum period [s] | 10.0          |

@@ -139,7 +139,7 @@ class DataCollectingTrajectoryPublisher(Node):
             "longitudinal_velocity_noise_amp",
             0.1,
             ParameterDescriptor(
-                description="Longitudinal velocity additional sine noise amplitude [m/s]"
+                description="Target longitudinal velocity additional sine noise amplitude [m/s]"
             ),
         )
 
@@ -147,7 +147,7 @@ class DataCollectingTrajectoryPublisher(Node):
             "longitudinal_velocity_noise_max_period",
             0.1,
             ParameterDescriptor(
-                description="Longitudinal velocity additional sine noise maximum period [s]"
+                description="Target longitudinal velocity additional sine noise maximum period [s]"
             ),
         )
 

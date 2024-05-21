@@ -19,88 +19,49 @@ from autoware_auto_planning_msgs.msg import Trajectory
 from autoware_auto_vehicle_msgs.msg import GearCommand
 from nav_msgs.msg import Odometry
 import numpy as np
+from rcl_interfaces.msg import ParameterDescriptor
 import rclpy
 from rclpy.node import Node
 from scipy.spatial.transform import Rotation as R
-
-# TODO: ベタ書き解消
-wheel_base = 2.79  # sample_vehicle_launch/sample_vehicle_description/config/vehicle_info.param.yaml
-naive_pure_pursuit_lookahead_length = 5.0
 
 
 def getYaw(orientation_xyzw):
     return R.from_quat(orientation_xyzw.reshape(-1, 4)).as_euler("xyz")[:, 2]
 
 
-def linearized_pure_pursuit_control(
-    pos_xy_obs,
-    pos_yaw_obs,
-    longitudinal_vel_obs,
-    pos_xy_ref_nearest,
-    pos_yaw_ref_nearest,
-    longitudinal_vel_ref_nearest,
-):
-    # control law equal to simple_trajectory_follower in autoware
-    pure_pursuit_acc_kp = 0.5
-    pure_pursuit_lookahead_time = 3.0
-    pure_pursuit_min_lookahead = 3.0
-    pure_pursuit_steer_kp_param = 2.0
-    pure_pursuit_steer_kd_param = 2.0
-
-    longitudinal_vel_err = longitudinal_vel_obs - longitudinal_vel_ref_nearest
-    pure_pursuit_acc_cmd = -pure_pursuit_acc_kp * longitudinal_vel_err
-
-    cos_yaw = np.cos(pos_yaw_ref_nearest)
-    sin_yaw = np.sin(pos_yaw_ref_nearest)
-    diff_position = pos_xy_obs - pos_xy_ref_nearest
-    lat_err = -sin_yaw * diff_position[0] + cos_yaw * diff_position[1]
-    yaw_err = pos_yaw_obs - pos_yaw_ref_nearest
-    lat_err = np.array([lat_err]).flatten()[0]
-    yaw_err = np.array([yaw_err]).flatten()[0]
-    while True:
-        if yaw_err > np.pi:
-            yaw_err -= 2.0 * np.pi
-        if yaw_err < (-np.pi):
-            yaw_err += 2.0 * np.pi
-        if np.abs(yaw_err) < np.pi:
-            break
-
-    lookahead = pure_pursuit_min_lookahead + pure_pursuit_lookahead_time * np.abs(
-        longitudinal_vel_obs
-    )
-    pure_pursuit_steer_kp = pure_pursuit_steer_kp_param * wheel_base / (lookahead * lookahead)
-    pure_pursuit_steer_kd = pure_pursuit_steer_kd_param * wheel_base / lookahead
-    pure_pursuit_steer_cmd = -pure_pursuit_steer_kp * lat_err - pure_pursuit_steer_kd * yaw_err
-    return np.array([pure_pursuit_acc_cmd, pure_pursuit_steer_cmd])
-
-
-def naive_pure_pursuit_control(
-    pos_xy_obs,
-    pos_yaw_obs,
-    longitudinal_vel_obs,
-    pos_xy_ref_target,
-    longitudinal_vel_ref_nearest,
-):
-    pure_pursuit_acc_kp = 0.5
-    longitudinal_vel_err = longitudinal_vel_obs - longitudinal_vel_ref_nearest
-    pure_pursuit_acc_cmd = -pure_pursuit_acc_kp * longitudinal_vel_err
-
-    rot_matrix = np.array(
-        [
-            [np.cos(pos_yaw_obs), np.sin(pos_yaw_obs)],
-            [-np.sin(pos_yaw_obs), np.cos(pos_yaw_obs)],
-        ]
-    ).reshape(2, 2)
-    target_position_from_vehicle = rot_matrix @ (pos_xy_ref_target - pos_xy_obs[:2])
-    alpha = np.arctan(target_position_from_vehicle[1] / target_position_from_vehicle[0])
-    angz = 2.0 * longitudinal_vel_ref_nearest * np.sin(alpha) / wheel_base
-    steer = np.arctan(angz * wheel_base / longitudinal_vel_ref_nearest)
-    return np.array([pure_pursuit_acc_cmd, steer])
-
-
 class DataCollectingPurePursuitTrajetoryFollower(Node):
     def __init__(self):
         super().__init__("data_collecting_pure_pursuit_trajectory_follower")
+
+        self.declare_parameter(
+            "wheel_base",
+            2.79,  # sample_vehicle_launch/sample_vehicle_description/config/vehicle_info.param.yaml
+            ParameterDescriptor(description="Wheel base [m]"),
+        )
+
+        self.declare_parameter(
+            "pure_pursuit_acc_kp",
+            0.5,
+            ParameterDescriptor(description="Pure pursuit accel command propotional gain"),
+        )
+
+        self.declare_parameter(
+            "naive_pure_pursuit_lookahead_length",
+            5.0,
+            ParameterDescriptor(description="Pure pursuit (naive version) lookahead length [m]"),
+        )
+
+        self.declare_parameter(
+            "acc_noise_amp",
+            0.1,
+            ParameterDescriptor(description="Accel cmd additional sine noise amplitude [m/s]"),
+        )
+
+        self.declare_parameter(
+            "acc_noise_max_period",
+            0.1,
+            ParameterDescriptor(description="Accel cmd additional sine noise maximum period [s]"),
+        )
 
         self.sub_odometry_ = self.create_subscription(
             Odometry,
@@ -145,6 +106,78 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
     def timer_callback(self):
         if (self._present_trajectory is not None) and (self._present_kinematic_state is not None):
             self.control()
+
+    def linearized_pure_pursuit_control(
+        self,
+        pos_xy_obs,
+        pos_yaw_obs,
+        longitudinal_vel_obs,
+        pos_xy_ref_nearest,
+        pos_yaw_ref_nearest,
+        longitudinal_vel_ref_nearest,
+    ):
+        # control law equal to simple_trajectory_follower in autoware
+        wheel_base = self.get_parameter("wheel_base").get_parameter_value().double_value
+        pure_pursuit_acc_kp = (
+            self.get_parameter("pure_pursuit_acc_kp").get_parameter_value().double_value
+        )
+        pure_pursuit_lookahead_time = 3.0
+        pure_pursuit_min_lookahead = 3.0
+        pure_pursuit_steer_kp_param = 2.0
+        pure_pursuit_steer_kd_param = 2.0
+
+        longitudinal_vel_err = longitudinal_vel_obs - longitudinal_vel_ref_nearest
+        pure_pursuit_acc_cmd = -pure_pursuit_acc_kp * longitudinal_vel_err
+
+        cos_yaw = np.cos(pos_yaw_ref_nearest)
+        sin_yaw = np.sin(pos_yaw_ref_nearest)
+        diff_position = pos_xy_obs - pos_xy_ref_nearest
+        lat_err = -sin_yaw * diff_position[0] + cos_yaw * diff_position[1]
+        yaw_err = pos_yaw_obs - pos_yaw_ref_nearest
+        lat_err = np.array([lat_err]).flatten()[0]
+        yaw_err = np.array([yaw_err]).flatten()[0]
+        while True:
+            if yaw_err > np.pi:
+                yaw_err -= 2.0 * np.pi
+            if yaw_err < (-np.pi):
+                yaw_err += 2.0 * np.pi
+            if np.abs(yaw_err) < np.pi:
+                break
+
+        lookahead = pure_pursuit_min_lookahead + pure_pursuit_lookahead_time * np.abs(
+            longitudinal_vel_obs
+        )
+        pure_pursuit_steer_kp = pure_pursuit_steer_kp_param * wheel_base / (lookahead * lookahead)
+        pure_pursuit_steer_kd = pure_pursuit_steer_kd_param * wheel_base / lookahead
+        pure_pursuit_steer_cmd = -pure_pursuit_steer_kp * lat_err - pure_pursuit_steer_kd * yaw_err
+        return np.array([pure_pursuit_acc_cmd, pure_pursuit_steer_cmd])
+
+    def naive_pure_pursuit_control(
+        self,
+        pos_xy_obs,
+        pos_yaw_obs,
+        longitudinal_vel_obs,
+        pos_xy_ref_target,
+        longitudinal_vel_ref_nearest,
+    ):
+        wheel_base = self.get_parameter("wheel_base").get_parameter_value().double_value
+        pure_pursuit_acc_kp = (
+            self.get_parameter("pure_pursuit_acc_kp").get_parameter_value().double_value
+        )
+        longitudinal_vel_err = longitudinal_vel_obs - longitudinal_vel_ref_nearest
+        pure_pursuit_acc_cmd = -pure_pursuit_acc_kp * longitudinal_vel_err
+
+        rot_matrix = np.array(
+            [
+                [np.cos(pos_yaw_obs), np.sin(pos_yaw_obs)],
+                [-np.sin(pos_yaw_obs), np.cos(pos_yaw_obs)],
+            ]
+        ).reshape(2, 2)
+        target_position_from_vehicle = rot_matrix @ (pos_xy_ref_target - pos_xy_obs[:2])
+        alpha = np.arctan(target_position_from_vehicle[1] / target_position_from_vehicle[0])
+        angz = 2.0 * longitudinal_vel_ref_nearest * np.sin(alpha) / wheel_base
+        steer = np.arctan(angz * wheel_base / longitudinal_vel_ref_nearest)
+        return np.array([pure_pursuit_acc_cmd, steer])
 
     def control(self):
         # [1] receive topic
@@ -202,7 +235,7 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
         # closest_traj_position = trajectory_position[nearestIndex]
         # closest_traj_yaw = getYaw(trajectory_orientation[nearestIndex])
         # closest_traj_longitudinal_velocity = trajectory_longitudinal_velocity[nearestIndex]
-        # cmd = linearized_pure_pursuit_control(
+        # cmd = self.linearized_pure_pursuit_control(
         #     present_position[:2],
         #     present_yaw,
         #     present_linear_velocity[0],
@@ -212,8 +245,12 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
         # )
 
         # [2b] naive pure pursuit
-
         targetIndex = 1 * nearestIndex
+        naive_pure_pursuit_lookahead_length = (
+            self.get_parameter("naive_pure_pursuit_lookahead_length")
+            .get_parameter_value()
+            .double_value
+        )
         while True:
             tmp_distance = np.sqrt(
                 ((trajectory_position[targetIndex][:2] - present_position[:2]) ** 2).sum()
@@ -224,7 +261,7 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
                 break
             targetIndex += 1
 
-        cmd = naive_pure_pursuit_control(
+        cmd = self.naive_pure_pursuit_control(
             present_position[:2],
             present_yaw,
             present_linear_velocity[0],
