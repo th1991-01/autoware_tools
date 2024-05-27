@@ -56,6 +56,22 @@ Visualization Manager:
       Update Interval: 0
       Value: false
 
+    - Class: rviz_default_plugins/MarkerArray
+      Topic: /data_collecting_lookahead_marker_array
+      Enabled: true
+      Frame Timeout: 15
+      Frames:
+        All Enabled: true
+      Marker Scale: 0.3
+      Name: MarkerArray
+      Show Arrows: true
+      Show Axes: true
+      Show Names: true
+      Tree:
+        {}
+      Update Interval: 0
+      Value: false
+
     - Class: rviz_common/Group
       Displays:
         - Class: rviz_default_plugins/TF

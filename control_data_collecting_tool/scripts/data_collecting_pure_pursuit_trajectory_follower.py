@@ -17,12 +17,15 @@
 from autoware_auto_control_msgs.msg import AckermannControlCommand
 from autoware_auto_planning_msgs.msg import Trajectory
 from autoware_auto_vehicle_msgs.msg import GearCommand
+from geometry_msgs.msg import Point
 from nav_msgs.msg import Odometry
 import numpy as np
 from rcl_interfaces.msg import ParameterDescriptor
 import rclpy
 from rclpy.node import Node
 from scipy.spatial.transform import Rotation as R
+from visualization_msgs.msg import Marker
+from visualization_msgs.msg import MarkerArray
 
 debug_matplotlib_plot_flag = False
 if debug_matplotlib_plot_flag:
@@ -53,7 +56,7 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
 
         self.declare_parameter(
             "naive_pure_pursuit_lookahead_length",
-            5.0,
+            10.0,
             ParameterDescriptor(description="Pure pursuit (naive version) lookahead length [m]"),
         )
 
@@ -65,13 +68,13 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
 
         self.declare_parameter(
             "acc_noise_min_period",
-            10.0,
+            5.0,
             ParameterDescriptor(description="Accel cmd additional sine noise minimum period [s]"),
         )
 
         self.declare_parameter(
             "acc_noise_max_period",
-            10.0,
+            20.0,
             ParameterDescriptor(description="Accel cmd additional sine noise maximum period [s]"),
         )
 
@@ -83,13 +86,13 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
 
         self.declare_parameter(
             "steer_noise_min_period",
-            10.0,
+            5.0,
             ParameterDescriptor(description="Steer cmd additional sine noise minimum period [s]"),
         )
 
         self.declare_parameter(
             "steer_noise_max_period",
-            10.0,
+            20.0,
             ParameterDescriptor(description="Steer cmd additional sine noise maximum period [s]"),
         )
 
@@ -118,6 +121,12 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
         self.gear_cmd_pub_ = self.create_publisher(
             GearCommand,
             "/external/selected/gear_cmd",
+            1,
+        )
+
+        self.data_collecting_lookahead_marker_array_pub_ = self.create_publisher(
+            MarkerArray,
+            "/data_collecting_lookahead_marker_array",
             1,
         )
 
@@ -158,6 +167,8 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
         pure_pursuit_acc_kp = (
             self.get_parameter("pure_pursuit_acc_kp").get_parameter_value().double_value
         )
+
+        # Currently, the following params are not declareed as ros2 params.
         pure_pursuit_lookahead_time = 3.0
         pure_pursuit_min_lookahead = 3.0
         pure_pursuit_steer_kp_param = 2.0
@@ -309,6 +320,9 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
                 )
 
         # [1] compute control
+        controller_name = "naive_pure_pursuit_control"
+        cmd = np.zeros(2)
+
         # [1a] linearized pure pursuit (deprecated)
         # closest_traj_position = trajectory_position[nearestIndex]
         # closest_traj_yaw = getYaw(trajectory_orientation[nearestIndex])
@@ -323,29 +337,31 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
         # )
 
         # [1b] naive pure pursuit
-        targetIndex = 1 * nearestIndex
-        naive_pure_pursuit_lookahead_length = (
-            self.get_parameter("naive_pure_pursuit_lookahead_length")
-            .get_parameter_value()
-            .double_value
-        )
-        while True:
-            tmp_distance = np.sqrt(
-                ((trajectory_position[targetIndex][:2] - present_position[:2]) ** 2).sum()
+        if controller_name == "naive_pure_pursuit_control":
+            targetIndex = 1 * nearestIndex
+            naive_pure_pursuit_lookahead_length = (
+                self.get_parameter("naive_pure_pursuit_lookahead_length")
+                .get_parameter_value()
+                .double_value
             )
-            if tmp_distance > naive_pure_pursuit_lookahead_length:
-                break
-            if targetIndex == (len(trajectory_position) - 1):
-                break
-            targetIndex += 1
+            while True:
+                tmp_distance = np.sqrt(
+                    ((trajectory_position[targetIndex][:2] - present_position[:2]) ** 2).sum()
+                )
+                if tmp_distance > naive_pure_pursuit_lookahead_length:
+                    break
+                if targetIndex == (len(trajectory_position) - 1):
+                    break
+                targetIndex += 1
 
-        cmd = self.naive_pure_pursuit_control(
-            present_position[:2],
-            present_yaw,
-            present_linear_velocity[0],
-            trajectory_position[targetIndex][:2],
-            trajectory_longitudinal_velocity[nearestIndex],
-        )
+            cmd = self.naive_pure_pursuit_control(
+                present_position[:2],
+                present_yaw,
+                present_linear_velocity[0],
+                trajectory_position[targetIndex][:2],
+                trajectory_longitudinal_velocity[nearestIndex],
+            )
+
         cmd_without_noise = 1 * cmd
 
         tmp_acc_noise = self.acc_noise_list.pop(0)
@@ -354,6 +370,7 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
         cmd[0] += tmp_acc_noise
         cmd[1] += tmp_steer_noise
 
+        # [2] publish cmd
         control_cmd_msg = AckermannControlCommand()
         control_cmd_msg.stamp = (
             control_cmd_msg.lateral.stamp
@@ -369,7 +386,45 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
         gear_cmd_msg.command = GearCommand.DRIVE
         self.gear_cmd_pub_.publish(gear_cmd_msg)
 
-        # debug plot
+        # [3] publish marker
+        if controller_name == "naive_pure_pursuit_control":
+            marker_array = MarkerArray()
+
+            marker_traj = Marker()
+            marker_traj.type = 4
+            marker_traj.id = 1
+            marker_traj.header.frame_id = "map"
+
+            marker_traj.action = marker_traj.ADD
+
+            marker_traj.scale.x = 0.6
+            marker_traj.scale.y = 0.0
+            marker_traj.scale.z = 0.0
+
+            marker_traj.color.a = 1.0
+            marker_traj.color.r = 0.0
+            marker_traj.color.g = 1.0
+            marker_traj.color.b = 0.0
+
+            marker_traj.lifetime.nanosec = 500000000
+            marker_traj.frame_locked = True
+
+            marker_traj.points = []
+            tmp_marker_point = Point()
+            tmp_marker_point.x = present_position[0]
+            tmp_marker_point.y = present_position[1]
+            tmp_marker_point.z = 0.0
+            marker_traj.points.append(tmp_marker_point)
+            tmp_marker_point = Point()
+            tmp_marker_point.x = trajectory_position[targetIndex][0]
+            tmp_marker_point.y = trajectory_position[targetIndex][1]
+            tmp_marker_point.z = 0.0
+            marker_traj.points.append(tmp_marker_point)
+
+            marker_array.markers.append(marker_traj)
+            self.data_collecting_lookahead_marker_array_pub_.publish(marker_array)
+
+        # [5] debug plot
         if debug_matplotlib_plot_flag:
             self.acc_history.append(1 * cmd[0])
             self.steer_history.append(1 * cmd[1])

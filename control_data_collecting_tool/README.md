@@ -42,7 +42,7 @@ Ros2 params in `/data_collecting_trajectory_publisher` node:
 | `Moving average smoothing window size`   | `int`    | Moving average smoothing window size                                  | 50            |
 | `mov_ave_window`                         | `double` | Target longitudinal velocity [m/s]                                    | 3.0           |
 | `longitudinal_velocity_noise_amp`        | `double` | Target longitudinal velocity additional sine noise amplitude [m/s]    | 0.1           |
-| `longitudinal_velocity_noise_min_period` | `double` | Target longitudinal velocity additional sine noise minimum period [s] | 5.0           |
+| `longitudinal_velocity_noise_min_period` | `double` | Target longitudinal velocity additional sine noise minimum period [s] | 10.0          |
 | `longitudinal_velocity_noise_max_period` | `double` | Target longitudinal velocity additional sine noise maximum period [s] | 20.0          |
 
 Ros2 params in `/data_collecting_pure_pursuit_trajectory_follower` node:

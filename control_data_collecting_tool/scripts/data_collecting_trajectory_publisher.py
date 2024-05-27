@@ -501,9 +501,39 @@ class DataCollectingTrajectoryPublisher(Node):
             marker_array = MarkerArray()
 
             # [4a] local trajectory
+            marker_traj1 = Marker()
+            marker_traj1.type = 4
+            marker_traj1.id = 1
+            marker_traj1.header.frame_id = "map"
+
+            marker_traj1.action = marker_traj1.ADD
+
+            marker_traj1.scale.x = 0.3
+            marker_traj1.scale.y = 0.0
+            marker_traj1.scale.z = 0.0
+
+            marker_traj1.color.a = 1.0
+            marker_traj1.color.r = 1.0
+            marker_traj1.color.g = 0.0
+            marker_traj1.color.b = 0.0
+
+            marker_traj1.lifetime.nanosec = 500000000
+            marker_traj1.frame_locked = True
+
+            marker_traj1.points = []
+            for i in range(len(tmp_traj.points)):
+                tmp_marker_point = Point()
+                tmp_marker_point.x = tmp_traj.points[i].pose.position.x
+                tmp_marker_point.y = tmp_traj.points[i].pose.position.y
+                tmp_marker_point.z = 0.0
+                marker_traj1.points.append(tmp_marker_point)
+
+            marker_array.markers.append(marker_traj1)
+
+            # [4b] whole trajectory
             marker_traj2 = Marker()
             marker_traj2.type = 4
-            marker_traj2.id = 1
+            marker_traj2.id = 0
             marker_traj2.header.frame_id = "map"
 
             marker_traj2.action = marker_traj2.ADD
@@ -513,53 +543,23 @@ class DataCollectingTrajectoryPublisher(Node):
             marker_traj2.scale.z = 0.0
 
             marker_traj2.color.a = 1.0
-            marker_traj2.color.r = 1.0
+            marker_traj2.color.r = 0.0
             marker_traj2.color.g = 0.0
-            marker_traj2.color.b = 0.0
+            marker_traj2.color.b = 1.0
 
             marker_traj2.lifetime.nanosec = 500000000
             marker_traj2.frame_locked = True
 
             marker_traj2.points = []
-            for i in range(len(tmp_traj.points)):
-                tmp_marker_point = Point()
-                tmp_marker_point.x = tmp_traj.points[i].pose.position.x
-                tmp_marker_point.y = tmp_traj.points[i].pose.position.y
-                tmp_marker_point.z = 0.0
-                marker_traj2.points.append(tmp_marker_point)
-
-            marker_array.markers.append(marker_traj2)
-
-            # [4b] whole trajectory
-            marker_traj = Marker()
-            marker_traj.type = 4
-            marker_traj.id = 0
-            marker_traj.header.frame_id = "map"
-
-            marker_traj.action = marker_traj.ADD
-
-            marker_traj.scale.x = 0.3
-            marker_traj.scale.y = 0.0
-            marker_traj.scale.z = 0.0
-
-            marker_traj.color.a = 1.0
-            marker_traj.color.r = 0.0
-            marker_traj.color.g = 0.0
-            marker_traj.color.b = 1.0
-
-            marker_traj.lifetime.nanosec = 500000000
-            marker_traj.frame_locked = True
-
-            marker_traj.points = []
             marker_downsampling = 5
             for i in range((len(trajectory_position_data) // marker_downsampling)):
                 tmp_marker_point = Point()
                 tmp_marker_point.x = trajectory_position_data[i * marker_downsampling, 0]
                 tmp_marker_point.y = trajectory_position_data[i * marker_downsampling, 1]
                 tmp_marker_point.z = 0.0
-                marker_traj.points.append(tmp_marker_point)
+                marker_traj2.points.append(tmp_marker_point)
 
-            marker_array.markers.append(marker_traj)
+            marker_array.markers.append(marker_traj2)
 
             self.data_collecting_trajectory_marker_array_pub_.publish(marker_array)
 
