@@ -2,7 +2,7 @@
 
 This package provides tools for automatically collecting data using pure pursuit control within a specified rectangular area.
 
-<img src="resource/demo.gif" width="480">
+<img src="resource/demo.gif" width="800">
 
 ## How to use
 
