@@ -35,7 +35,7 @@ ros2 launch control_data_collecting_tool control_data_collecting_tool.launch.py
 
 ## Parameter
 
-Ros2 params in `/data_collecting_trajectory_publisher` node:
+ROS 2 params in `/data_collecting_trajectory_publisher` node:
 
 | Name                                     | Type     | Description                                                           | Default value |
 | :--------------------------------------- | :------- | :-------------------------------------------------------------------- | :------------ |
