@@ -24,9 +24,11 @@ import rclpy
 from rclpy.node import Node
 from scipy.spatial.transform import Rotation as R
 
-debug_matplotlib_plot_flag = True
+debug_matplotlib_plot_flag = False
 if debug_matplotlib_plot_flag:
     import matplotlib.pyplot as plt
+
+    plt.rcParams["figure.figsize"] = [8, 8]
 
 
 def getYaw(orientation_xyzw):
@@ -62,6 +64,12 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
         )
 
         self.declare_parameter(
+            "acc_noise_min_period",
+            10.0,
+            ParameterDescriptor(description="Accel cmd additional sine noise minimum period [s]"),
+        )
+
+        self.declare_parameter(
             "acc_noise_max_period",
             10.0,
             ParameterDescriptor(description="Accel cmd additional sine noise maximum period [s]"),
@@ -71,6 +79,12 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
             "steer_noise_amp",
             0.01,
             ParameterDescriptor(description="Steer cmd additional sine noise amplitude [rad]"),
+        )
+
+        self.declare_parameter(
+            "steer_noise_min_period",
+            10.0,
+            ParameterDescriptor(description="Steer cmd additional sine noise minimum period [s]"),
         )
 
         self.declare_parameter(
@@ -259,9 +273,14 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
                 np.random.rand()
                 * self.get_parameter("acc_noise_amp").get_parameter_value().double_value
             )
-            tmp_noise_period = (
-                np.random.rand()
-                * self.get_parameter("acc_noise_max_period").get_parameter_value().double_value
+            noise_min_period = (
+                self.get_parameter("acc_noise_min_period").get_parameter_value().double_value
+            )
+            noise_max_period = (
+                self.get_parameter("acc_noise_max_period").get_parameter_value().double_value
+            )
+            tmp_noise_period = noise_min_period + np.random.rand() * (
+                noise_max_period - noise_min_period
             )
             dt = self.timer_period_callback
             noise_data_num = max(4, int(tmp_noise_period / dt))
@@ -272,10 +291,16 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
                 np.random.rand()
                 * self.get_parameter("steer_noise_amp").get_parameter_value().double_value
             )
-            tmp_noise_period = (
-                np.random.rand()
-                * self.get_parameter("steer_noise_max_period").get_parameter_value().double_value
+            noise_min_period = (
+                self.get_parameter("steer_noise_min_period").get_parameter_value().double_value
             )
+            noise_max_period = (
+                self.get_parameter("steer_noise_max_period").get_parameter_value().double_value
+            )
+            tmp_noise_period = noise_min_period + np.random.rand() * (
+                noise_max_period - noise_min_period
+            )
+
             dt = self.timer_period_callback
             noise_data_num = max(4, int(tmp_noise_period / dt))
             for i in range(noise_data_num):
@@ -365,6 +390,7 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
             plt.plot(0, cmd_without_noise[0], "o", label="acc cmd without noise")
             plt.plot(timestamp, self.acc_history, "-", label="acc cmd history")
             plt.plot(timestamp, self.acc_noise_history, "-", label="acc noise history")
+            plt.xlim([-20.5, 0.5])
             plt.ylim([-1, 3])
             plt.ylabel("acc [m/ss]")
             plt.legend()
@@ -373,7 +399,8 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
             plt.plot(0, cmd_without_noise[1], "o", label="steer without noise")
             plt.plot(timestamp, self.steer_history, "-", label="steer cmd history")
             plt.plot(timestamp, self.steer_noise_history, "-", label="steer noise history")
-            plt.ylim([-1, 1])
+            plt.xlim([-20.5, 0.5])
+            plt.ylim([-1.25, 1.25])
             plt.xlabel("future timestamp [s]")
             plt.ylabel("steer [rad]")
             plt.legend()

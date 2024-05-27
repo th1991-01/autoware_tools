@@ -4,9 +4,6 @@ This package provides tools for automatically collecting data using pure pursuit
 
 <img src="resource/demo.gif" width="480">
 
-## TODO
-- パラメータのデフォルトとコードを合わせる
-
 ## How to use
 
 1. Launch Autoware.
@@ -56,6 +53,8 @@ Ros2 params in `/data_collecting_pure_pursuit_trajectory_follower` node:
 | `pure_pursuit_acc_kp`                 | `double` | Pure pursuit accel command propotional gain            | 0.5           |
 | `naive_pure_pursuit_lookahead_length` | `double` | Pure pursuit (naive version) lookahead length [m]      | 5.0           |
 | `acc_noise_amp`                       | `double` | Accel command additional sine noise amplitude [m/ss]   | 0.01          |
-| `acc_noise_max_period`                | `double` | Accel command additional sine noise maximum period [s] | 10.0          |
+| `acc_noise_min_period`                | `double` | Accel command additional sine noise minimum period [s] | 5.0           |
+| `acc_noise_max_period`                | `double` | Accel command additional sine noise maximum period [s] | 20.0          |
 | `steer_noise_amp`                     | `double` | Steer command additional sine noise amplitude [rad]    | 0.01          |
-| `steer_noise_max_period`              | `double` | Steer command additional sine noise maximum period [s] | 10.0          |
+| `steer_noise_max_period`              | `double` | Steer command additional sine noise maximum period [s] | 5.0           |
+| `steer_noise_min_period`              | `double` | Steer command additional sine noise minimum period [s] | 20.0          |
