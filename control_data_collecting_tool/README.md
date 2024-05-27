@@ -18,7 +18,6 @@ This package provides tools for automatically collecting data using pure pursuit
 1. Launch Autoware.
 
 ```bash
-source ~/autoware/install/setup.bash
 ros2 launch autoware_launch planning_simulator.launch.xml rviz_config:=$(ros2 pkg prefix control_data_collecting_tool)/share/control_data_collecting_tool/rviz/autoware.rviz map_path:=$HOME/autoware_map/sample-map-planning vehicle_model:=sample_vehicle sensor_model:=sample_sensor_kit
 ```
 
@@ -27,7 +26,6 @@ ros2 launch autoware_launch planning_simulator.launch.xml rviz_config:=$(ros2 pk
 3. Launch control_data_collecting_tool.
 
 ```bash
-source ~/autoware/install/setup.bash
 ros2 launch control_data_collecting_tool control_data_collecting_tool.launch.py
 ```
 
@@ -69,7 +67,7 @@ ROS 2 params in `/data_collecting_trajectory_publisher` node:
 | `longitudinal_velocity_noise_min_period` | `double` | Target longitudinal velocity additional sine noise minimum period [s] | 5.0           |
 | `longitudinal_velocity_noise_max_period` | `double` | Target longitudinal velocity additional sine noise maximum period [s] | 20.0          |
 
-Ros 2 params in `/data_collecting_pure_pursuit_trajectory_follower` node:
+ROS 2 params in `/data_collecting_pure_pursuit_trajectory_follower` node:
 
 | Name                                  | Type     | Description                                            | Default value |
 | :------------------------------------ | :------- | :----------------------------------------------------- | :------------ |

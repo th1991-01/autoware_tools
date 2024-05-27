@@ -168,7 +168,7 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
             self.get_parameter("pure_pursuit_acc_kp").get_parameter_value().double_value
         )
 
-        # Currently, the following params are not declareed as ros2 params.
+        # Currently, the following params are not declareed as ROS 2 params.
         pure_pursuit_lookahead_time = 3.0
         pure_pursuit_min_lookahead = 3.0
         pure_pursuit_steer_kp_param = 2.0
