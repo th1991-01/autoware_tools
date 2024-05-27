@@ -31,7 +31,7 @@ from scipy.spatial.transform import Rotation as R
 from visualization_msgs.msg import Marker
 from visualization_msgs.msg import MarkerArray
 
-debug_matplotlib_plot_flag = True
+debug_matplotlib_plot_flag = False
 if debug_matplotlib_plot_flag:
     import matplotlib.pyplot as plt
 
@@ -144,8 +144,16 @@ class DataCollectingTrajectoryPublisher(Node):
         )
 
         self.declare_parameter(
+            "longitudinal_velocity_noise_min_period",
+            5.0,
+            ParameterDescriptor(
+                description="Target longitudinal velocity additional sine noise minimum period [s]"
+            ),
+        )
+
+        self.declare_parameter(
             "longitudinal_velocity_noise_max_period",
-            10.0,
+            20.0,
             ParameterDescriptor(
                 description="Target longitudinal velocity additional sine noise maximum period [s]"
             ),
@@ -238,19 +246,6 @@ class DataCollectingTrajectoryPublisher(Node):
                 ]
             )
 
-            # tmp_noise_amp = (
-            #     np.random.rand()
-            #     * self.get_parameter("acc_noise_amp").get_parameter_value().double_value
-            # )
-            # tmp_noise_period = (
-            #     np.random.rand()
-            #     * self.get_parameter("acc_noise_max_period").get_parameter_value().double_value
-            # )
-            # dt = self.timer_period_callback
-            # noise_data_num = max(4, int(tmp_noise_period / dt))
-            # for i in range(noise_data_num):
-            #     self.acc_noise_list.append(tmp_noise_amp * np.sin(2.0 * np.pi * i / noise_data_num))
-
             # [1] compute an approximate rectangle
             l1 = np.sqrt(((data_collecting_area[0, :2] - data_collecting_area[1, :2]) ** 2).sum())
             l2 = np.sqrt(((data_collecting_area[1, :2] - data_collecting_area[2, :2]) ** 2).sum())
@@ -327,7 +322,7 @@ class DataCollectingTrajectoryPublisher(Node):
                     trajectory_position_data[:, 1] = (
                         1 * np.convolve(augment_data[:, 1], w, mode="same")[window:-window]
                     )
-                    # TODO: smoothing yaw angle
+                    # NOTE: Target yaw angle trajectory is not smoothed. Please implement it if using a controller other than pure pursuit.
 
             # [2-3] translation and rotation of origin
             rot_matrix = np.array(
@@ -352,7 +347,7 @@ class DataCollectingTrajectoryPublisher(Node):
             )
             trajectory_longitudinal_velocity_data = target_longitudinal_velocity * np.ones(
                 len(trajectory_position_data)
-            )  # TODO: adding noise?
+            )
 
             # [3] find near point index for local trajectory
             distance = np.sqrt(((trajectory_position_data - present_position[:2]) ** 2).sum(axis=1))
@@ -372,6 +367,40 @@ class DataCollectingTrajectoryPublisher(Node):
             if nearestIndex is None:
                 nearestIndex = index_array_near[0]
 
+            # prepare velocity noise
+            while True:
+                if len(self.vel_noise_list) > len(trajectory_longitudinal_velocity_data) * 2:
+                    break
+                else:
+                    tmp_noise_vel = (
+                        np.random.rand()
+                        * self.get_parameter("longitudinal_velocity_noise_amp")
+                        .get_parameter_value()
+                        .double_value
+                    )
+                    noise_min_period = (
+                        self.get_parameter("longitudinal_velocity_noise_min_period")
+                        .get_parameter_value()
+                        .double_value
+                    )
+                    noise_max_period = (
+                        self.get_parameter("longitudinal_velocity_noise_max_period")
+                        .get_parameter_value()
+                        .double_value
+                    )
+                    tmp_noise_period = noise_min_period + np.random.rand() * (
+                        noise_max_period - noise_min_period
+                    )
+                    dt = self.timer_period_callback
+                    noise_data_num = max(
+                        4, int(tmp_noise_period / dt)
+                    )  # 4 is minimum noise_data_num
+                    for i in range(noise_data_num):
+                        self.vel_noise_list.append(
+                            tmp_noise_vel * np.sin(2.0 * np.pi * i / noise_data_num)
+                        )
+            self.vel_noise_list.pop(0)
+
             # [4] publish trajectory
             # [4-1] augment data
             aug_data_length = len(trajectory_position_data) // 4
@@ -387,6 +416,9 @@ class DataCollectingTrajectoryPublisher(Node):
                     trajectory_longitudinal_velocity_data[:aug_data_length],
                 ]
             )
+            trajectory_longitudinal_velocity_data[nearestIndex:] += np.array(self.vel_noise_list)[
+                : len(trajectory_longitudinal_velocity_data[nearestIndex:])
+            ]
 
             pub_traj_len = min(int(50 / step), aug_data_length)
 
@@ -432,7 +464,9 @@ class DataCollectingTrajectoryPublisher(Node):
                     ],
                     label="target",
                 )
+                plt.xlim([-0.5, 10.5])
                 plt.ylim([-0.5, 12.5])
+
                 # plt.xlabel("future driving distance [m]")
                 plt.xlabel("future timestamp [s]")
                 plt.ylabel("longitudinal_velocity [m/s]")
