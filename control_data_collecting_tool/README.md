@@ -1,8 +1,17 @@
-# Control data collecting tools
+# Control data collecting tool
 
 This package provides tools for automatically collecting data using pure pursuit control within a specified rectangular area.
 
 <img src="resource/demo.gif" width="800">
+
+## Overview
+
+- This package aims to collect a dataset consisting of control inputs (i.e. `control_cmd`) and observation variables (i.e. `kinematic_state`, `steering_status`, etc).
+- The collected dataset can be used as training dataset for learning-based controllers, including [smart_mpc](https://github.com/autowarefoundation/autoware.universe/tree/main/control/smart_mpc_trajectory_follower).
+- The data collecting approach is as follows:
+  - Seting a figure-eight target trajectory within the specified rectangular area.
+  - Following the trajectory using a pure pursuit control law.
+  - Adding noises to the trajectory and the control command for data diversity, improveing the prediction accuracy of learning model.
 
 ## How to use
 
@@ -22,15 +31,29 @@ source ~/autoware/install/setup.bash
 ros2 launch control_data_collecting_tool control_data_collecting_tool.launch.py
 ```
 
-4. Select the data collecting area using `DataCollectingAreaSelectionTool` plugin.
+4. Select `DataCollectingAreaSelectionTool` plugin.
+
    <img src="resource/select_tool.png" width="480">
+
+   Highlight the data collecting area by dragging the mouse over it.
+
    <img src="resource/select_area.gif" width="480">
 
 > [!NOTE]
 > You cannot change the data collecting area while driving.
 
-5. Start data collecting by clicking the `LOCAL` button on `OperationMode` in `AutowareStatePanel`.
+5. start recording rosbag data. For example, run the following command:
+
+```bash
+ros2 bag record /localization/kinematic_state /localization/acceleration /vehicle/status/steering_status /sensing/imu/imu_data /system/operation_mode/state /vehicle/status/control_mode /external/selected/control_cmd /external/selected/gear_cmd /data_collecting_trajectory
+```
+
+6. Click the `LOCAL` button on `OperationMode` in `AutowareStatePanel`.
+
    <img src="resource/push_LOCAL.png" width="480">
+
+   Then, data collecting starts.
+
    <img src="resource/demo.gif" width="480">
 
 ## Parameter
@@ -46,7 +69,7 @@ ROS 2 params in `/data_collecting_trajectory_publisher` node:
 | `longitudinal_velocity_noise_min_period` | `double` | Target longitudinal velocity additional sine noise minimum period [s] | 5.0           |
 | `longitudinal_velocity_noise_max_period` | `double` | Target longitudinal velocity additional sine noise maximum period [s] | 20.0          |
 
-Ros2 params in `/data_collecting_pure_pursuit_trajectory_follower` node:
+Ros 2 params in `/data_collecting_pure_pursuit_trajectory_follower` node:
 
 | Name                                  | Type     | Description                                            | Default value |
 | :------------------------------------ | :------- | :----------------------------------------------------- | :------------ |
