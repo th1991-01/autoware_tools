@@ -1,11 +1,10 @@
 # Control data collecting tools
 
-This package provides tools for automatically collecting data by pure pursuit control within a specified rectangular area.
+This package provides tools for automatically collecting data using pure pursuit control within a specified rectangular area.
 
-<img src="resource/demo.gif" width="400">
+<img src="resource/demo.gif" width="480">
 
 ## TODO
-* 画像取り直し
 * パラメータのデフォルトとコードを合わせる
 * 速度へのノイズ付加をやる
 
@@ -27,12 +26,16 @@ source ~/autoware/install/setup.bash
 ros2 launch control_data_collecting_tool control_data_collecting_tool.launch.py
 ```
 
-4. Select the data collecting area using `DataCollectingAreaSelectionTool` plugin, see gif.
+4. Select the data collecting area using `DataCollectingAreaSelectionTool` plugin.
+<img src="resource/select_tool.png" width="480">
+<img src="resource/select_area.gif" width="480">
 
 > [!NOTE]
 > You cannot change the data collecting area while driving.
 
+
 5. Start data collecting by clicking the `LOCAL` button on `OperationMode` in `AutowareStatePanel`.
+<img src="resource/push_LOCAL.png" width="480">
 
 ## Parameter
 
