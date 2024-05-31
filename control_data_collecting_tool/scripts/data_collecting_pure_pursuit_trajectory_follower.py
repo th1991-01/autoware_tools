@@ -55,19 +55,15 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
         )
 
         self.declare_parameter(
-            "naive_pure_pursuit_lookahead_length_coef",
+            "pure_pursuit_lookahead_length_coef",
             1.0,
-            ParameterDescriptor(
-                description="Pure pursuit (naive version) lookahead length coef [m/(m/s)]"
-            ),
+            ParameterDescriptor(description="Pure pursuit lookahead length coef [m/(m/s)]"),
         )
 
         self.declare_parameter(
-            "naive_pure_pursuit_lookahead_length_intercept",
+            "pure_pursuit_lookahead_length_intercept",
             5.0,
-            ParameterDescriptor(
-                description="Pure pursuit (naive version) lookahead length intercept [m]"
-            ),
+            ParameterDescriptor(description="Pure pursuit lookahead length intercept [m]"),
         )
 
         self.declare_parameter(
@@ -168,53 +164,6 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
     def timer_callback(self):
         if (self._present_trajectory is not None) and (self._present_kinematic_state is not None):
             self.control()
-
-    # def linearized_pure_pursuit_control(
-    #     self,
-    #     pos_xy_obs,
-    #     pos_yaw_obs,
-    #     longitudinal_vel_obs,
-    #     pos_xy_ref_nearest,
-    #     pos_yaw_ref_nearest,
-    #     longitudinal_vel_ref_nearest,
-    # ):
-    #     # control law equal to simple_trajectory_follower in autoware
-    #     wheel_base = self.get_parameter("wheel_base").get_parameter_value().double_value
-    #     pure_pursuit_acc_kp = (
-    #         self.get_parameter("pure_pursuit_acc_kp").get_parameter_value().double_value
-    #     )
-
-    #     # Currently, the following params are not declareed as ROS 2 params.
-    #     pure_pursuit_lookahead_time = 3.0
-    #     pure_pursuit_min_lookahead = 3.0
-    #     pure_pursuit_steer_kp_param = 2.0
-    #     pure_pursuit_steer_kd_param = 2.0
-
-    #     longitudinal_vel_err = longitudinal_vel_obs - longitudinal_vel_ref_nearest
-    #     pure_pursuit_acc_cmd = -pure_pursuit_acc_kp * longitudinal_vel_err
-
-    #     cos_yaw = np.cos(pos_yaw_ref_nearest)
-    #     sin_yaw = np.sin(pos_yaw_ref_nearest)
-    #     diff_position = pos_xy_obs - pos_xy_ref_nearest
-    #     lat_err = -sin_yaw * diff_position[0] + cos_yaw * diff_position[1]
-    #     yaw_err = pos_yaw_obs - pos_yaw_ref_nearest
-    #     lat_err = np.array([lat_err]).flatten()[0]
-    #     yaw_err = np.array([yaw_err]).flatten()[0]
-    #     while True:
-    #         if yaw_err > np.pi:
-    #             yaw_err -= 2.0 * np.pi
-    #         if yaw_err < (-np.pi):
-    #             yaw_err += 2.0 * np.pi
-    #         if np.abs(yaw_err) < np.pi:
-    #             break
-
-    #     lookahead = pure_pursuit_min_lookahead + pure_pursuit_lookahead_time * np.abs(
-    #         longitudinal_vel_obs
-    #     )
-    #     pure_pursuit_steer_kp = pure_pursuit_steer_kp_param * wheel_base / (lookahead * lookahead)
-    #     pure_pursuit_steer_kd = pure_pursuit_steer_kd_param * wheel_base / lookahead
-    #     pure_pursuit_steer_cmd = -pure_pursuit_steer_kp * lat_err - pure_pursuit_steer_kd * yaw_err
-    #     return np.array([pure_pursuit_acc_cmd, pure_pursuit_steer_cmd])
 
     def naive_pure_pursuit_control(
         self,
@@ -335,56 +284,38 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
                 )
 
         # [1] compute control
-        controller_name = "naive_pure_pursuit_control"
-        cmd = np.zeros(2)
+        targetIndex = 1 * nearestIndex
+        lookahead_coef = (
+            self.get_parameter("pure_pursuit_lookahead_length_coef")
+            .get_parameter_value()
+            .double_value
+        )
+        lookahead_intercept = (
+            self.get_parameter("pure_pursuit_lookahead_length_intercept")
+            .get_parameter_value()
+            .double_value
+        )
+        pure_pursuit_lookahead_length = (
+            lookahead_coef * present_linear_velocity[0] + lookahead_intercept
+        )
 
-        # [1a] linearized pure pursuit (deprecated)
-        # closest_traj_position = trajectory_position[nearestIndex]
-        # closest_traj_yaw = getYaw(trajectory_orientation[nearestIndex])
-        # closest_traj_longitudinal_velocity = trajectory_longitudinal_velocity[nearestIndex]
-        # cmd = self.linearized_pure_pursuit_control(
-        #     present_position[:2],
-        #     present_yaw,
-        #     present_linear_velocity[0],
-        #     closest_traj_position[:2],
-        #     closest_traj_yaw,
-        #     closest_traj_longitudinal_velocity,
-        # )
+        while True:
+            tmp_distance = np.sqrt(
+                ((trajectory_position[targetIndex][:2] - present_position[:2]) ** 2).sum()
+            )
+            if tmp_distance > pure_pursuit_lookahead_length:
+                break
+            if targetIndex == (len(trajectory_position) - 1):
+                break
+            targetIndex += 1
 
-        # [1b] naive pure pursuit
-        if controller_name == "naive_pure_pursuit_control":
-            targetIndex = 1 * nearestIndex
-            lookahead_coef = (
-                self.get_parameter("naive_pure_pursuit_lookahead_length_coef")
-                .get_parameter_value()
-                .double_value
-            )
-            lookahead_intercept = (
-                self.get_parameter("naive_pure_pursuit_lookahead_length_intercept")
-                .get_parameter_value()
-                .double_value
-            )
-            naive_pure_pursuit_lookahead_length = (
-                lookahead_coef * present_linear_velocity[0] + lookahead_intercept
-            )
-
-            while True:
-                tmp_distance = np.sqrt(
-                    ((trajectory_position[targetIndex][:2] - present_position[:2]) ** 2).sum()
-                )
-                if tmp_distance > naive_pure_pursuit_lookahead_length:
-                    break
-                if targetIndex == (len(trajectory_position) - 1):
-                    break
-                targetIndex += 1
-
-            cmd = self.naive_pure_pursuit_control(
-                present_position[:2],
-                present_yaw,
-                present_linear_velocity[0],
-                trajectory_position[targetIndex][:2],
-                trajectory_longitudinal_velocity[nearestIndex],
-            )
+        cmd = self.naive_pure_pursuit_control(
+            present_position[:2],
+            present_yaw,
+            present_linear_velocity[0],
+            trajectory_position[targetIndex][:2],
+            trajectory_longitudinal_velocity[nearestIndex],
+        )
 
         cmd_without_noise = 1 * cmd
 
@@ -411,42 +342,41 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
         self.gear_cmd_pub_.publish(gear_cmd_msg)
 
         # [3] publish marker
-        if controller_name == "naive_pure_pursuit_control":
-            marker_array = MarkerArray()
+        marker_array = MarkerArray()
 
-            marker_traj = Marker()
-            marker_traj.type = 4
-            marker_traj.id = 1
-            marker_traj.header.frame_id = "map"
+        marker_traj = Marker()
+        marker_traj.type = 4
+        marker_traj.id = 1
+        marker_traj.header.frame_id = "map"
 
-            marker_traj.action = marker_traj.ADD
+        marker_traj.action = marker_traj.ADD
 
-            marker_traj.scale.x = 0.6
-            marker_traj.scale.y = 0.0
-            marker_traj.scale.z = 0.0
+        marker_traj.scale.x = 0.6
+        marker_traj.scale.y = 0.0
+        marker_traj.scale.z = 0.0
 
-            marker_traj.color.a = 1.0
-            marker_traj.color.r = 0.0
-            marker_traj.color.g = 1.0
-            marker_traj.color.b = 0.0
+        marker_traj.color.a = 1.0
+        marker_traj.color.r = 0.0
+        marker_traj.color.g = 1.0
+        marker_traj.color.b = 0.0
 
-            marker_traj.lifetime.nanosec = 500000000
-            marker_traj.frame_locked = True
+        marker_traj.lifetime.nanosec = 500000000
+        marker_traj.frame_locked = True
 
-            marker_traj.points = []
-            tmp_marker_point = Point()
-            tmp_marker_point.x = present_position[0]
-            tmp_marker_point.y = present_position[1]
-            tmp_marker_point.z = 0.0
-            marker_traj.points.append(tmp_marker_point)
-            tmp_marker_point = Point()
-            tmp_marker_point.x = trajectory_position[targetIndex][0]
-            tmp_marker_point.y = trajectory_position[targetIndex][1]
-            tmp_marker_point.z = 0.0
-            marker_traj.points.append(tmp_marker_point)
+        marker_traj.points = []
+        tmp_marker_point = Point()
+        tmp_marker_point.x = present_position[0]
+        tmp_marker_point.y = present_position[1]
+        tmp_marker_point.z = 0.0
+        marker_traj.points.append(tmp_marker_point)
+        tmp_marker_point = Point()
+        tmp_marker_point.x = trajectory_position[targetIndex][0]
+        tmp_marker_point.y = trajectory_position[targetIndex][1]
+        tmp_marker_point.z = 0.0
+        marker_traj.points.append(tmp_marker_point)
 
-            marker_array.markers.append(marker_traj)
-            self.data_collecting_lookahead_marker_array_pub_.publish(marker_array)
+        marker_array.markers.append(marker_traj)
+        self.data_collecting_lookahead_marker_array_pub_.publish(marker_array)
 
         # [5] debug plot
         if debug_matplotlib_plot_flag:
