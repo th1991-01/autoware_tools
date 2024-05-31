@@ -306,25 +306,23 @@ class DataCollectingTrajectoryPublisher(Node):
             )
 
             # [2-2] smoothing figure eight path
-            smoothing_flag = True
-            if smoothing_flag:
-                window = self.get_parameter("mov_ave_window").get_parameter_value().integer_value
-                if window < len(trajectory_position_data):
-                    w = np.ones(window) / window
-                    augment_data = np.vstack(
-                        [
-                            trajectory_position_data[-window:],
-                            trajectory_position_data,
-                            trajectory_position_data[:window],
-                        ]
-                    )
-                    trajectory_position_data[:, 0] = (
-                        1 * np.convolve(augment_data[:, 0], w, mode="same")[window:-window]
-                    )
-                    trajectory_position_data[:, 1] = (
-                        1 * np.convolve(augment_data[:, 1], w, mode="same")[window:-window]
-                    )
-                    # NOTE: Target yaw angle trajectory is not smoothed. Please implement it if using a controller other than pure pursuit.
+            window = self.get_parameter("mov_ave_window").get_parameter_value().integer_value
+            if window < len(trajectory_position_data):
+                w = np.ones(window) / window
+                augment_data = np.vstack(
+                    [
+                        trajectory_position_data[-window:],
+                        trajectory_position_data,
+                        trajectory_position_data[:window],
+                    ]
+                )
+                trajectory_position_data[:, 0] = (
+                    1 * np.convolve(augment_data[:, 0], w, mode="same")[window:-window]
+                )
+                trajectory_position_data[:, 1] = (
+                    1 * np.convolve(augment_data[:, 1], w, mode="same")[window:-window]
+                )
+                # NOTE: Target yaw angle trajectory is not smoothed. Please implement it if using a controller other than pure pursuit.
 
             # [2-3] translation and rotation of origin
             rot_matrix = np.array(
@@ -337,11 +335,7 @@ class DataCollectingTrajectoryPublisher(Node):
             trajectory_position_data += rectangle_center_position
             trajectory_yaw_data += yaw_offset
 
-            # [2-4] compute velocity
-            max_lateral_accel = (
-                self.get_parameter("max_lateral_accel").get_parameter_value().double_value
-            )
-            lateral_acc_limit = np.sqrt(max_lateral_accel * curve_data)
+            # [2-4] nominal velocity
             target_longitudinal_velocity = (
                 self.get_parameter("target_longitudinal_velocity")
                 .get_parameter_value()
@@ -351,25 +345,7 @@ class DataCollectingTrajectoryPublisher(Node):
                 len(trajectory_position_data)
             )
 
-            # [3] find near point index for local trajectory
-            distance = np.sqrt(((trajectory_position_data - present_position[:2]) ** 2).sum(axis=1))
-            index_array_near = np.argsort(distance)
-
-            max_cos_diff_yaw_value = -1
-            nearestIndex = None
-            for i in range(len(index_array_near)):
-                if (distance[index_array_near[0]] + step * 10) < distance[index_array_near[i]]:
-                    break
-                tmp_cos_diff_yaw_value = np.cos(
-                    trajectory_yaw_data[index_array_near[i]] - present_yaw
-                )
-                if tmp_cos_diff_yaw_value > max_cos_diff_yaw_value:
-                    max_cos_diff_yaw_value = 1.0 * tmp_cos_diff_yaw_value
-                    nearestIndex = 1 * index_array_near[i]
-            if nearestIndex is None:
-                nearestIndex = index_array_near[0]
-
-            # prepare velocity noise
+            # [3] prepare velocity noise
             while True:
                 if len(self.vel_noise_list) > len(trajectory_longitudinal_velocity_data) * 2:
                     break
@@ -403,8 +379,26 @@ class DataCollectingTrajectoryPublisher(Node):
                         )
             self.vel_noise_list.pop(0)
 
-            # [4] publish trajectory
-            # [4-1] augment data
+            # [4] find near point index for local trajectory
+            distance = np.sqrt(((trajectory_position_data - present_position[:2]) ** 2).sum(axis=1))
+            index_array_near = np.argsort(distance)
+
+            max_cos_diff_yaw_value = -1
+            nearestIndex = None
+            for i in range(len(index_array_near)):
+                if (distance[index_array_near[0]] + step * 10) < distance[index_array_near[i]]:
+                    break
+                tmp_cos_diff_yaw_value = np.cos(
+                    trajectory_yaw_data[index_array_near[i]] - present_yaw
+                )
+                if tmp_cos_diff_yaw_value > max_cos_diff_yaw_value:
+                    max_cos_diff_yaw_value = 1.0 * tmp_cos_diff_yaw_value
+                    nearestIndex = 1 * index_array_near[i]
+            if nearestIndex is None:
+                nearestIndex = index_array_near[0]
+
+            # [5] modify target velocity
+            # [5-1] add noise
             aug_data_length = len(trajectory_position_data) // 4
             trajectory_position_data = np.vstack(
                 [trajectory_position_data, trajectory_position_data[:aug_data_length]]
@@ -421,7 +415,15 @@ class DataCollectingTrajectoryPublisher(Node):
             trajectory_longitudinal_velocity_data[nearestIndex:] += np.array(self.vel_noise_list)[
                 : len(trajectory_longitudinal_velocity_data[nearestIndex:])
             ]
+            trajectory_longitudinal_velocity_data_without_limit = (
+                trajectory_longitudinal_velocity_data.copy()
+            )
 
+            # [5-2] apply lateral accel limit
+            max_lateral_accel = (
+                self.get_parameter("max_lateral_accel").get_parameter_value().double_value
+            )
+            lateral_acc_limit = np.sqrt(max_lateral_accel * curve_data)
             lateral_acc_limit = np.hstack(
                 [
                     lateral_acc_limit,
@@ -432,51 +434,9 @@ class DataCollectingTrajectoryPublisher(Node):
                 trajectory_longitudinal_velocity_data, lateral_acc_limit
             )
 
+            # [6] publish
+            # [6-1] publish trajectory
             pub_traj_len = min(int(50 / step), aug_data_length)
-
-            # debug plot
-            if debug_matplotlib_plot_flag:
-                plt.cla()
-                step_size_array = np.sqrt(
-                    ((trajectory_position_data[1:] - trajectory_position_data[:-1]) ** 2).sum(
-                        axis=1
-                    )
-                )
-                distance = np.zeros(len(trajectory_position_data))
-                for i in range(1, len(trajectory_position_data)):
-                    distance[i] = distance[i - 1] + step_size_array[i - 1]
-                distance -= distance[nearestIndex]
-                time_width_array = step_size_array / trajectory_longitudinal_velocity_data[:-1]
-                timestamp = np.zeros(len(trajectory_position_data))
-                for i in range(1, len(trajectory_position_data)):
-                    timestamp[i] = timestamp[i - 1] + time_width_array[i - 1]
-                timestamp -= timestamp[nearestIndex]
-
-                plt.plot(0, present_linear_velocity[0], "o", label="current_obs")
-                plt.plot(
-                    # distance[nearestIndex : nearestIndex + pub_traj_len],
-                    timestamp[nearestIndex : nearestIndex + pub_traj_len],
-                    lateral_acc_limit[nearestIndex : nearestIndex + pub_traj_len],
-                    label="lateral_acc_limit",
-                )
-                plt.plot(
-                    # distance[nearestIndex : nearestIndex + pub_traj_len],
-                    timestamp[nearestIndex : nearestIndex + pub_traj_len],
-                    trajectory_longitudinal_velocity_data[
-                        nearestIndex : nearestIndex + pub_traj_len
-                    ],
-                    label="target",
-                )
-                plt.xlim([-0.5, 10.5])
-                plt.ylim([-0.5, 12.5])
-
-                # plt.xlabel("future driving distance [m]")
-                plt.xlabel("future timestamp [s]")
-                plt.ylabel("longitudinal_velocity [m/s]")
-                plt.legend()
-                plt.pause(0.01)
-
-            # [4-2] publish
             tmp_traj = Trajectory()
             for i in range(pub_traj_len):
                 tmp_traj_point = TrajectoryPoint()
@@ -500,13 +460,13 @@ class DataCollectingTrajectoryPublisher(Node):
 
             self.trajectory_for_collecting_data_pub_.publish(tmp_traj)
 
-            # [4] publish marker_array
+            # [6-2] publish marker_array
             marker_array = MarkerArray()
 
-            # [4a] local trajectory
+            # [6-2a] local trajectory
             marker_traj1 = Marker()
             marker_traj1.type = 4
-            marker_traj1.id = 1
+            marker_traj1.id = 0
             marker_traj1.header.frame_id = "map"
 
             marker_traj1.action = marker_traj1.ADD
@@ -533,10 +493,10 @@ class DataCollectingTrajectoryPublisher(Node):
 
             marker_array.markers.append(marker_traj1)
 
-            # [4b] whole trajectory
+            # [6-2b] whole trajectory
             marker_traj2 = Marker()
             marker_traj2.type = 4
-            marker_traj2.id = 0
+            marker_traj2.id = 1
             marker_traj2.header.frame_id = "map"
 
             marker_traj2.action = marker_traj2.ADD
@@ -565,6 +525,59 @@ class DataCollectingTrajectoryPublisher(Node):
             marker_array.markers.append(marker_traj2)
 
             self.data_collecting_trajectory_marker_array_pub_.publish(marker_array)
+
+            # [99] debug plot
+            if debug_matplotlib_plot_flag:
+                plt.cla()
+                step_size_array = np.sqrt(
+                    ((trajectory_position_data[1:] - trajectory_position_data[:-1]) ** 2).sum(
+                        axis=1
+                    )
+                )
+                distance = np.zeros(len(trajectory_position_data))
+                for i in range(1, len(trajectory_position_data)):
+                    distance[i] = distance[i - 1] + step_size_array[i - 1]
+                distance -= distance[nearestIndex]
+                time_width_array = step_size_array / trajectory_longitudinal_velocity_data[:-1]
+                timestamp = np.zeros(len(trajectory_position_data))
+                for i in range(1, len(trajectory_position_data)):
+                    timestamp[i] = timestamp[i - 1] + time_width_array[i - 1]
+                timestamp -= timestamp[nearestIndex]
+
+                plt.plot(0, present_linear_velocity[0], "o", label="current_obs")
+
+                plt.plot(
+                    # distance[nearestIndex : nearestIndex + pub_traj_len],
+                    timestamp[nearestIndex : nearestIndex + pub_traj_len],
+                    trajectory_longitudinal_velocity_data_without_limit[
+                        nearestIndex : nearestIndex + pub_traj_len
+                    ],
+                    "--",
+                    label="target before applying limit",
+                )
+                plt.plot(
+                    # distance[nearestIndex : nearestIndex + pub_traj_len],
+                    timestamp[nearestIndex : nearestIndex + pub_traj_len],
+                    lateral_acc_limit[nearestIndex : nearestIndex + pub_traj_len],
+                    "--",
+                    label="lateral_acc_limit",
+                )
+                plt.plot(
+                    # distance[nearestIndex : nearestIndex + pub_traj_len],
+                    timestamp[nearestIndex : nearestIndex + pub_traj_len],
+                    trajectory_longitudinal_velocity_data[
+                        nearestIndex : nearestIndex + pub_traj_len
+                    ],
+                    label="actual target",
+                )
+                plt.xlim([-0.5, 10.5])
+                plt.ylim([-0.5, 12.5])
+
+                # plt.xlabel("future driving distance [m]")
+                plt.xlabel("future timestamp [s]")
+                plt.ylabel("longitudinal_velocity [m/s]")
+                plt.legend()
+                plt.pause(0.01)
 
 
 def main(args=None):
