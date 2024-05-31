@@ -125,13 +125,13 @@ class DataCollectingTrajectoryPublisher(Node):
 
         self.declare_parameter(
             "mov_ave_window",
-            50,
+            100,
             ParameterDescriptor(description="Moving average smoothing window size"),
         )
 
         self.declare_parameter(
             "target_longitudinal_velocity",
-            3.0,
+            6.0,
             ParameterDescriptor(description="Target longitudinal velocity [m/s]"),
         )
 
@@ -296,12 +296,15 @@ class DataCollectingTrajectoryPublisher(Node):
             step = 0.1
             total_distance = ld * (1 + np.pi) * 2
 
+            actual_long_side = max(long_side_length - long_side_margin, 1.1)
+            actual_short_side = max(short_side_length - long_side_margin, 1.0)
             trajectory_position_data, trajectory_yaw_data, curve_data = get_trajectory_points(
-                max(long_side_length - long_side_margin, 1.1),
-                max(short_side_length - long_side_margin, 1.0),
+                actual_long_side,
+                actual_short_side,
                 step,
                 total_distance,
             )
+            # self.get_logger().info("long_side, short_side = %s " % str((actual_long_side, actual_short_side)))
 
             # [2-2] smoothing figure eight path
             smoothing_flag = True
@@ -420,6 +423,16 @@ class DataCollectingTrajectoryPublisher(Node):
                 : len(trajectory_longitudinal_velocity_data[nearestIndex:])
             ]
 
+            lateral_acc_limit = np.hstack(
+                [
+                    lateral_acc_limit,
+                    lateral_acc_limit[:aug_data_length],
+                ]
+            )
+            trajectory_longitudinal_velocity_data = np.minimum(
+                trajectory_longitudinal_velocity_data, lateral_acc_limit
+            )
+
             pub_traj_len = min(int(50 / step), aug_data_length)
 
             # debug plot
@@ -440,15 +453,6 @@ class DataCollectingTrajectoryPublisher(Node):
                     timestamp[i] = timestamp[i - 1] + time_width_array[i - 1]
                 timestamp -= timestamp[nearestIndex]
 
-                lateral_acc_limit = np.hstack(
-                    [
-                        lateral_acc_limit,
-                        lateral_acc_limit[:aug_data_length],
-                    ]
-                )
-                trajectory_longitudinal_velocity_data = np.minimum(
-                    trajectory_longitudinal_velocity_data, lateral_acc_limit
-                )
                 plt.plot(0, present_linear_velocity[0], "o", label="current_obs")
                 plt.plot(
                     # distance[nearestIndex : nearestIndex + pub_traj_len],

@@ -61,22 +61,24 @@ ROS 2 params in `/data_collecting_trajectory_publisher` node:
 | Name                                     | Type     | Description                                                           | Default value |
 | :--------------------------------------- | :------- | :-------------------------------------------------------------------- | :------------ |
 | `max_lateral_accel`                      | `double` | Max lateral acceleration limit [m/ss]                                 | 0.5           |
-| `Moving average smoothing window size`   | `int`    | Moving average smoothing window size                                  | 50            |
-| `mov_ave_window`                         | `double` | Target longitudinal velocity [m/s]                                    | 3.0           |
+| `mov_ave_window`                         | `int`    | Moving average smoothing window size                                  | 50            |
+| `target_longitudinal_velocity`           | `double` | Target longitudinal velocity [m/s]                                    | 6.0           |
 | `longitudinal_velocity_noise_amp`        | `double` | Target longitudinal velocity additional sine noise amplitude [m/s]    | 0.1           |
 | `longitudinal_velocity_noise_min_period` | `double` | Target longitudinal velocity additional sine noise minimum period [s] | 5.0           |
 | `longitudinal_velocity_noise_max_period` | `double` | Target longitudinal velocity additional sine noise maximum period [s] | 20.0          |
 
 ROS 2 params in `/data_collecting_pure_pursuit_trajectory_follower` node:
 
-| Name                                  | Type     | Description                                            | Default value |
-| :------------------------------------ | :------- | :----------------------------------------------------- | :------------ |
-| `wheel_base`                          | `double` | Wheel base [m]                                         | 2.79          |
-| `pure_pursuit_acc_kp`                 | `double` | Pure pursuit accel command propotional gain            | 0.5           |
-| `naive_pure_pursuit_lookahead_length` | `double` | Pure pursuit (naive version) lookahead length [m]      | 5.0           |
-| `acc_noise_amp`                       | `double` | Accel command additional sine noise amplitude [m/ss]   | 0.01          |
-| `acc_noise_min_period`                | `double` | Accel command additional sine noise minimum period [s] | 5.0           |
-| `acc_noise_max_period`                | `double` | Accel command additional sine noise maximum period [s] | 20.0          |
-| `steer_noise_amp`                     | `double` | Steer command additional sine noise amplitude [rad]    | 0.01          |
-| `steer_noise_max_period`              | `double` | Steer command additional sine noise maximum period [s] | 5.0           |
-| `steer_noise_min_period`              | `double` | Steer command additional sine noise minimum period [s] | 20.0          |
+| Name                                            | Type     | Description                                                  | Default value |
+| :---------------------------------------------- | :------- | :----------------------------------------------------------- | :------------ |
+| `wheel_base`                                    | `double` | Wheel base [m]                                               | 2.79          |
+| `pure_pursuit_acc_kp`                           | `double` | Pure pursuit accel command propotional gain                  | 0.5           |
+| `naive_pure_pursuit_lookahead_length_coef`      | `double` | Pure pursuit (naive version) lookahead length coef [m/(m/s)] | 1.0           |
+| `naive_pure_pursuit_lookahead_length_intercept` | `double` | Pure pursuit (naive version) lookahead length intercept [m]  | 5.0           |
+| `steer_limit`                                   | `double` | Steer control input limit [rad]                              | 0.5           |
+| `acc_noise_amp`                                 | `double` | Accel command additional sine noise amplitude [m/ss]         | 0.01          |
+| `acc_noise_min_period`                          | `double` | Accel command additional sine noise minimum period [s]       | 5.0           |
+| `acc_noise_max_period`                          | `double` | Accel command additional sine noise maximum period [s]       | 20.0          |
+| `steer_noise_amp`                               | `double` | Steer command additional sine noise amplitude [rad]          | 0.01          |
+| `steer_noise_max_period`                        | `double` | Steer command additional sine noise maximum period [s]       | 5.0           |
+| `steer_noise_min_period`                        | `double` | Steer command additional sine noise minimum period [s]       | 20.0          |
