@@ -124,6 +124,22 @@ class DataCollectingTrajectoryPublisher(Node):
         )
 
         self.declare_parameter(
+            "lateral_error_threshold",
+            5.0,
+            ParameterDescriptor(
+                description="Lateral error threshold where applying velocity limit [m/s]"
+            ),
+        )
+
+        self.declare_parameter(
+            "velocity_limit_by_lateral_error",
+            3.0,
+            ParameterDescriptor(
+                description="Velocity limit when lateral error exceeds threshold [m/s]"
+            ),
+        )
+
+        self.declare_parameter(
             "mov_ave_window",
             100,
             ParameterDescriptor(description="Moving average smoothing window size"),
@@ -433,6 +449,22 @@ class DataCollectingTrajectoryPublisher(Node):
             trajectory_longitudinal_velocity_data = np.minimum(
                 trajectory_longitudinal_velocity_data, lateral_acc_limit
             )
+            # [5-3] apply limit by lateral error
+            lateral_error_threshold = (
+                self.get_parameter("lateral_error_threshold").get_parameter_value().double_value
+            )
+            velocity_limit_by_lateral_error = (
+                self.get_parameter("velocity_limit_by_lateral_error")
+                .get_parameter_value()
+                .double_value
+            )
+            tmp_lateral_error = np.sqrt(
+                ((trajectory_position_data[nearestIndex] - present_position[:2]) ** 2).sum()
+            )
+            if lateral_error_threshold < tmp_lateral_error:
+                trajectory_longitudinal_velocity_data = np.minimum(
+                    trajectory_longitudinal_velocity_data, velocity_limit_by_lateral_error
+                )
 
             # [6] publish
             # [6-1] publish trajectory
@@ -544,7 +576,7 @@ class DataCollectingTrajectoryPublisher(Node):
                     timestamp[i] = timestamp[i - 1] + time_width_array[i - 1]
                 timestamp -= timestamp[nearestIndex]
 
-                plt.plot(0, present_linear_velocity[0], "o", label="current_obs")
+                plt.plot(0, present_linear_velocity[0], "o", label="current vel")
 
                 plt.plot(
                     # distance[nearestIndex : nearestIndex + pub_traj_len],
@@ -553,14 +585,21 @@ class DataCollectingTrajectoryPublisher(Node):
                         nearestIndex : nearestIndex + pub_traj_len
                     ],
                     "--",
-                    label="target before applying limit",
+                    label="target vel before applying limit",
                 )
                 plt.plot(
                     # distance[nearestIndex : nearestIndex + pub_traj_len],
                     timestamp[nearestIndex : nearestIndex + pub_traj_len],
                     lateral_acc_limit[nearestIndex : nearestIndex + pub_traj_len],
                     "--",
-                    label="lateral_acc_limit",
+                    label="lateral acc limit (always)",
+                )
+                plt.plot(
+                    # distance[nearestIndex : nearestIndex + pub_traj_len],
+                    timestamp[nearestIndex : nearestIndex + pub_traj_len],
+                    velocity_limit_by_lateral_error * np.ones(pub_traj_len),
+                    "--",
+                    label="vel limit by lateral error (only when exceeding threshold)",
                 )
                 plt.plot(
                     # distance[nearestIndex : nearestIndex + pub_traj_len],
@@ -568,7 +607,7 @@ class DataCollectingTrajectoryPublisher(Node):
                     trajectory_longitudinal_velocity_data[
                         nearestIndex : nearestIndex + pub_traj_len
                     ],
-                    label="actual target",
+                    label="actual target vel",
                 )
                 plt.xlim([-0.5, 10.5])
                 plt.ylim([-0.5, 12.5])
@@ -576,7 +615,7 @@ class DataCollectingTrajectoryPublisher(Node):
                 # plt.xlabel("future driving distance [m]")
                 plt.xlabel("future timestamp [s]")
                 plt.ylabel("longitudinal_velocity [m/s]")
-                plt.legend()
+                plt.legend(fontsize=8)
                 plt.pause(0.01)
 
 
