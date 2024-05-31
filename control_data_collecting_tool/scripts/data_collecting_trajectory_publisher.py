@@ -304,7 +304,6 @@ class DataCollectingTrajectoryPublisher(Node):
                 step,
                 total_distance,
             )
-            # self.get_logger().info("long_side, short_side = %s " % str((actual_long_side, actual_short_side)))
 
             # [2-2] smoothing figure eight path
             smoothing_flag = True
