@@ -210,6 +210,8 @@ class DataCollectingTrajectoryPublisher(Node):
         self._present_kinematic_state = None
         self._data_collecting_area_polygon = None
 
+        self.one_round_progress_rate = None
+
         self.vel_noise_list = []
 
     def onOdometry(self, msg):
@@ -231,14 +233,6 @@ class DataCollectingTrajectoryPublisher(Node):
                     self._present_kinematic_state.pose.pose.position.z,
                 ]
             )
-            present_orientation = np.array(
-                [
-                    self._present_kinematic_state.pose.pose.orientation.x,
-                    self._present_kinematic_state.pose.pose.orientation.y,
-                    self._present_kinematic_state.pose.pose.orientation.z,
-                    self._present_kinematic_state.pose.pose.orientation.w,
-                ]
-            )
             present_linear_velocity = np.array(
                 [
                     self._present_kinematic_state.twist.twist.linear.x,
@@ -246,8 +240,6 @@ class DataCollectingTrajectoryPublisher(Node):
                     self._present_kinematic_state.twist.twist.linear.z,
                 ]
             )
-
-            present_yaw = getYaw(present_orientation)[0]
 
             data_collecting_area = np.array(
                 [
@@ -399,19 +391,27 @@ class DataCollectingTrajectoryPublisher(Node):
             distance = np.sqrt(((trajectory_position_data - present_position[:2]) ** 2).sum(axis=1))
             index_array_near = np.argsort(distance)
 
-            max_cos_diff_yaw_value = -1
             nearestIndex = None
-            for i in range(len(index_array_near)):
-                if (distance[index_array_near[0]] + step * 10) < distance[index_array_near[i]]:
-                    break
-                tmp_cos_diff_yaw_value = np.cos(
-                    trajectory_yaw_data[index_array_near[i]] - present_yaw
-                )
-                if tmp_cos_diff_yaw_value > max_cos_diff_yaw_value:
-                    max_cos_diff_yaw_value = 1.0 * tmp_cos_diff_yaw_value
-                    nearestIndex = 1 * index_array_near[i]
-            if nearestIndex is None:
+            if (self.one_round_progress_rate is None) or (present_linear_velocity[0] < 0.1):
+                # if initializing, or if re-initialize while stopping
                 nearestIndex = index_array_near[0]
+            else:
+                for i in range(len(index_array_near)):
+                    progress_rate_diff = (
+                        1.0 * index_array_near[i] / len(trajectory_position_data)
+                    ) - self.one_round_progress_rate
+                    if progress_rate_diff > 0.5:
+                        progress_rate_diff -= 1.0
+                    if progress_rate_diff < -0.5:
+                        progress_rate_diff += 1.0
+                    near_progress_rate_threshold = 0.2
+                    if np.abs(progress_rate_diff) < near_progress_rate_threshold:
+                        nearestIndex = 1 * index_array_near[i]
+                        break
+                if nearestIndex is None:
+                    nearestIndex = index_array_near[0]
+
+            self.one_round_progress_rate = 1.0 * nearestIndex / len(trajectory_position_data)
 
             # [5] modify target velocity
             # [5-1] add noise
