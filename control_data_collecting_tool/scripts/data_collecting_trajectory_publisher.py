@@ -132,8 +132,16 @@ class DataCollectingTrajectoryPublisher(Node):
         )
 
         self.declare_parameter(
+            "yaw_error_threshold",
+            0.5,
+            ParameterDescriptor(
+                description="Yaw error threshold where applying velocity limit [rad]"
+            ),
+        )
+
+        self.declare_parameter(
             "velocity_limit_by_tracking_error",
-            3.0,
+            2.0,
             ParameterDescriptor(
                 description="Velocity limit when tracking error exceeds threshold [m/s]"
             ),
@@ -382,6 +390,14 @@ class DataCollectingTrajectoryPublisher(Node):
                     self._present_kinematic_state.pose.pose.position.z,
                 ]
             )
+            present_orientation = np.array(
+                [
+                    self._present_kinematic_state.pose.pose.orientation.x,
+                    self._present_kinematic_state.pose.pose.orientation.y,
+                    self._present_kinematic_state.pose.pose.orientation.z,
+                    self._present_kinematic_state.pose.pose.orientation.w,
+                ]
+            )
             present_linear_velocity = np.array(
                 [
                     self._present_kinematic_state.twist.twist.linear.x,
@@ -389,6 +405,7 @@ class DataCollectingTrajectoryPublisher(Node):
                     self._present_kinematic_state.twist.twist.linear.z,
                 ]
             )
+            present_yaw = getYaw(present_orientation)
 
             # [2] get whole trajectory data
             trajectory_position_data = self.trajectory_position_data.copy()
@@ -458,8 +475,6 @@ class DataCollectingTrajectoryPublisher(Node):
 
             self.one_round_progress_rate = 1.0 * nearestIndex / len(trajectory_position_data)
 
-            self.get_logger().info("%s " % str(trajectory_yaw_data[nearestIndex]))
-
             # [5] modify target velocity
             # [5-1] add noise
             aug_data_length = len(trajectory_position_data) // 4
@@ -507,11 +522,17 @@ class DataCollectingTrajectoryPublisher(Node):
                 self.get_parameter("lateral_error_threshold").get_parameter_value().double_value
             )
 
+            yaw_error_threshold = (
+                self.get_parameter("yaw_error_threshold").get_parameter_value().double_value
+            )
+
             tmp_lateral_error = np.sqrt(
                 ((trajectory_position_data[nearestIndex] - present_position[:2]) ** 2).sum()
             )
 
-            if lateral_error_threshold < tmp_lateral_error:
+            tmp_yaw_error = np.abs(present_yaw - trajectory_yaw_data[nearestIndex])
+
+            if lateral_error_threshold < tmp_lateral_error or yaw_error_threshold < tmp_yaw_error:
                 trajectory_longitudinal_velocity_data = np.minimum(
                     trajectory_longitudinal_velocity_data, velocity_limit_by_tracking_error
                 )
