@@ -204,11 +204,16 @@ class DataCollectingTrajectoryPublisher(Node):
         self.sub_data_collecting_area_
 
         self.timer_period_callback = 0.03  # 30ms
+        self.traj_step = 0.1
 
         self.timer = self.create_timer(self.timer_period_callback, self.timer_callback)
 
         self._present_kinematic_state = None
-        self._data_collecting_area_polygon = None
+
+        self.trajectory_position_data = None
+        self.trajectory_yaw_data = None
+        self.trajectory_longitudinal_velocity_data = None
+        self.trajectory_curvature_data = None
 
         self.one_round_progress_rate = None
 
@@ -220,12 +225,123 @@ class DataCollectingTrajectoryPublisher(Node):
     def onDataCollectingArea(self, msg):
         self._data_collecting_area_polygon = msg
 
+        data_collecting_area = np.array(
+            [
+                np.array(
+                    [
+                        self._data_collecting_area_polygon.polygon.points[i].x,
+                        self._data_collecting_area_polygon.polygon.points[i].y,
+                        self._data_collecting_area_polygon.polygon.points[i].z,
+                    ]
+                )
+                for i in range(4)
+            ]
+        )
+
+        # [1] compute an approximate rectangle
+        l1 = np.sqrt(((data_collecting_area[0, :2] - data_collecting_area[1, :2]) ** 2).sum())
+        l2 = np.sqrt(((data_collecting_area[1, :2] - data_collecting_area[2, :2]) ** 2).sum())
+        l3 = np.sqrt(((data_collecting_area[2, :2] - data_collecting_area[3, :2]) ** 2).sum())
+        l4 = np.sqrt(((data_collecting_area[3, :2] - data_collecting_area[0, :2]) ** 2).sum())
+        la = (l1 + l3) / 2
+        lb = (l2 + l4) / 2
+        if np.abs(la - lb) < 1e-6:
+            la += 0.1  # long_side_length must not be equal to short_side_length
+        ld = np.sqrt(la**2 + lb**2)
+        rectangle_center_position = np.zeros(2)
+        for i in range(4):
+            rectangle_center_position[0] += data_collecting_area[i, 0] / 4.0
+            rectangle_center_position[1] += data_collecting_area[i, 1] / 4.0
+
+        vec_from_center_to_point0_data = data_collecting_area[0, :2] - rectangle_center_position
+        vec_from_center_to_point1_data = data_collecting_area[1, :2] - rectangle_center_position
+        unitvec_from_center_to_point0_data = vec_from_center_to_point0_data / (
+            np.sqrt((vec_from_center_to_point0_data**2).sum()) + 1e-10
+        )
+        unitvec_from_center_to_point1_data = vec_from_center_to_point1_data / (
+            np.sqrt((vec_from_center_to_point1_data**2).sum()) + 1e-10
+        )
+
+        # [2] compute whole trajectory
+        # [2-1] generate figure eight path
+        if la > lb:
+            long_side_length = la
+            short_side_length = lb
+            vec_long_side = -unitvec_from_center_to_point0_data + unitvec_from_center_to_point1_data
+        else:
+            long_side_length = lb
+            short_side_length = la
+            vec_long_side = unitvec_from_center_to_point0_data + unitvec_from_center_to_point1_data
+        unitvec_long_side = vec_long_side / np.sqrt((vec_long_side**2).sum())
+        if unitvec_long_side[1] < 0:
+            unitvec_long_side *= -1
+        yaw_offset = np.arccos(unitvec_long_side[0])
+        if yaw_offset > pi / 2:
+            yaw_offset -= pi
+
+        long_side_margin = 5
+        long_side_margin = 5
+        total_distance = ld * (1 + np.pi) * 2
+
+        actual_long_side = max(long_side_length - long_side_margin, 1.1)
+        actual_short_side = max(short_side_length - long_side_margin, 1.0)
+        (
+            trajectory_position_data,
+            trajectory_yaw_data,
+            trajectory_curvature_data,
+        ) = get_trajectory_points(
+            actual_long_side,
+            actual_short_side,
+            self.traj_step,
+            total_distance,
+        )
+
+        # [2-2] smoothing figure eight path
+        window = self.get_parameter("mov_ave_window").get_parameter_value().integer_value
+        if window < len(trajectory_position_data):
+            w = np.ones(window) / window
+            augmented_data = np.vstack(
+                [
+                    trajectory_position_data[-window:],
+                    trajectory_position_data,
+                    trajectory_position_data[:window],
+                ]
+            )
+            trajectory_position_data[:, 0] = (
+                1 * np.convolve(augmented_data[:, 0], w, mode="same")[window:-window]
+            )
+            trajectory_position_data[:, 1] = (
+                1 * np.convolve(augmented_data[:, 1], w, mode="same")[window:-window]
+            )
+            # NOTE: Target yaw angle trajectory is not smoothed. Please implement it if using a controller other than pure pursuit.
+
+        # [2-3] translation and rotation of origin
+        rot_matrix = np.array(
+            [
+                [np.cos(yaw_offset), -np.sin(yaw_offset)],
+                [np.sin(yaw_offset), np.cos(yaw_offset)],
+            ]
+        )
+        trajectory_position_data = (rot_matrix @ trajectory_position_data.T).T
+        trajectory_position_data += rectangle_center_position
+        trajectory_yaw_data += yaw_offset
+
+        # [2-4] nominal velocity
+        target_longitudinal_velocity = (
+            self.get_parameter("target_longitudinal_velocity").get_parameter_value().double_value
+        )
+        trajectory_longitudinal_velocity_data = target_longitudinal_velocity * np.ones(
+            len(trajectory_position_data)
+        )
+
+        self.trajectory_position_data = trajectory_position_data.copy()
+        self.trajectory_yaw_data = trajectory_yaw_data.copy()
+        self.trajectory_longitudinal_velocity_data = trajectory_longitudinal_velocity_data.copy()
+        self.trajectory_curvature_data = trajectory_curvature_data.copy()
+
     def timer_callback(self):
-        if (
-            self._present_kinematic_state is not None
-            and self._data_collecting_area_polygon is not None
-        ):
-            # [0] receive data from topic
+        if self._present_kinematic_state is not None and self.trajectory_position_data is not None:
+            # [1] receive observation from topic
             present_position = np.array(
                 [
                     self._present_kinematic_state.pose.pose.position.x,
@@ -241,117 +357,13 @@ class DataCollectingTrajectoryPublisher(Node):
                 ]
             )
 
-            data_collecting_area = np.array(
-                [
-                    np.array(
-                        [
-                            self._data_collecting_area_polygon.polygon.points[i].x,
-                            self._data_collecting_area_polygon.polygon.points[i].y,
-                            self._data_collecting_area_polygon.polygon.points[i].z,
-                        ]
-                    )
-                    for i in range(4)
-                ]
+            # [2] get whole trajectory data
+            trajectory_position_data = self.trajectory_position_data.copy()
+            trajectory_yaw_data = self.trajectory_yaw_data.copy()
+            trajectory_longitudinal_velocity_data = (
+                self.trajectory_longitudinal_velocity_data.copy()
             )
-
-            # [1] compute an approximate rectangle
-            l1 = np.sqrt(((data_collecting_area[0, :2] - data_collecting_area[1, :2]) ** 2).sum())
-            l2 = np.sqrt(((data_collecting_area[1, :2] - data_collecting_area[2, :2]) ** 2).sum())
-            l3 = np.sqrt(((data_collecting_area[2, :2] - data_collecting_area[3, :2]) ** 2).sum())
-            l4 = np.sqrt(((data_collecting_area[3, :2] - data_collecting_area[0, :2]) ** 2).sum())
-            la = (l1 + l3) / 2
-            lb = (l2 + l4) / 2
-            if np.abs(la - lb) < 1e-6:
-                la += 0.1  # long_side_length must not be equal to short_side_length
-            ld = np.sqrt(la**2 + lb**2)
-            rectangle_center_position = np.zeros(2)
-            for i in range(4):
-                rectangle_center_position[0] += data_collecting_area[i, 0] / 4.0
-                rectangle_center_position[1] += data_collecting_area[i, 1] / 4.0
-
-            vec_from_center_to_point0_data = data_collecting_area[0, :2] - rectangle_center_position
-            vec_from_center_to_point1_data = data_collecting_area[1, :2] - rectangle_center_position
-            unitvec_from_center_to_point0_data = vec_from_center_to_point0_data / (
-                np.sqrt((vec_from_center_to_point0_data**2).sum()) + 1e-10
-            )
-            unitvec_from_center_to_point1_data = vec_from_center_to_point1_data / (
-                np.sqrt((vec_from_center_to_point1_data**2).sum()) + 1e-10
-            )
-
-            # [2] compute whole trajectory
-            # [2-1] generate figure eight path
-            if la > lb:
-                long_side_length = la
-                short_side_length = lb
-                vec_long_side = (
-                    -unitvec_from_center_to_point0_data + unitvec_from_center_to_point1_data
-                )
-            else:
-                long_side_length = lb
-                short_side_length = la
-                vec_long_side = (
-                    unitvec_from_center_to_point0_data + unitvec_from_center_to_point1_data
-                )
-            unitvec_long_side = vec_long_side / np.sqrt((vec_long_side**2).sum())
-            if unitvec_long_side[1] < 0:
-                unitvec_long_side *= -1
-            yaw_offset = np.arccos(unitvec_long_side[0])
-            if yaw_offset > pi / 2:
-                yaw_offset -= pi
-
-            long_side_margin = 5
-            long_side_margin = 5
-            step = 0.1
-            total_distance = ld * (1 + np.pi) * 2
-
-            actual_long_side = max(long_side_length - long_side_margin, 1.1)
-            actual_short_side = max(short_side_length - long_side_margin, 1.0)
-            trajectory_position_data, trajectory_yaw_data, curve_data = get_trajectory_points(
-                actual_long_side,
-                actual_short_side,
-                step,
-                total_distance,
-            )
-
-            # [2-2] smoothing figure eight path
-            window = self.get_parameter("mov_ave_window").get_parameter_value().integer_value
-            if window < len(trajectory_position_data):
-                w = np.ones(window) / window
-                augmented_data = np.vstack(
-                    [
-                        trajectory_position_data[-window:],
-                        trajectory_position_data,
-                        trajectory_position_data[:window],
-                    ]
-                )
-                trajectory_position_data[:, 0] = (
-                    1 * np.convolve(augmented_data[:, 0], w, mode="same")[window:-window]
-                )
-                trajectory_position_data[:, 1] = (
-                    1 * np.convolve(augmented_data[:, 1], w, mode="same")[window:-window]
-                )
-                # NOTE: Target yaw angle trajectory is not smoothed. Please implement it if using a controller other than pure pursuit.
-
-            # [2-3] translation and rotation of origin
-            rot_matrix = np.array(
-                [
-                    [np.cos(yaw_offset), -np.sin(yaw_offset)],
-                    [np.sin(yaw_offset), np.cos(yaw_offset)],
-                ]
-            )
-            trajectory_position_data = (rot_matrix @ trajectory_position_data.T).T
-            trajectory_position_data += rectangle_center_position
-            trajectory_yaw_data += yaw_offset
-
-            # [2-4] nominal velocity
-            target_longitudinal_velocity = (
-                self.get_parameter("target_longitudinal_velocity")
-                .get_parameter_value()
-                .double_value
-            )
-            trajectory_longitudinal_velocity_data = target_longitudinal_velocity * np.ones(
-                len(trajectory_position_data)
-            )
+            trajectory_curvature_data = self.trajectory_curvature_data.copy()
 
             # [3] prepare velocity noise
             while True:
@@ -439,7 +451,7 @@ class DataCollectingTrajectoryPublisher(Node):
             max_lateral_accel = (
                 self.get_parameter("max_lateral_accel").get_parameter_value().double_value
             )
-            lateral_acc_limit = np.sqrt(max_lateral_accel * curve_data)
+            lateral_acc_limit = np.sqrt(max_lateral_accel * trajectory_curvature_data)
             lateral_acc_limit = np.hstack(
                 [
                     lateral_acc_limit,
@@ -471,7 +483,7 @@ class DataCollectingTrajectoryPublisher(Node):
 
             # [6] publish
             # [6-1] publish trajectory
-            pub_traj_len = min(int(50 / step), aug_data_length)
+            pub_traj_len = min(int(50 / self.traj_step), aug_data_length)
             tmp_traj = Trajectory()
             for i in range(pub_traj_len):
                 tmp_traj_point = TrajectoryPoint()
