@@ -295,27 +295,13 @@ class DataCollectingTrajectoryPublisher(Node):
             self.traj_step,
             total_distance,
         )
+        for i in range(len(trajectory_yaw_data)):
+            if trajectory_yaw_data[i] > np.pi:
+                trajectory_yaw_data[i] -= 2 * np.pi
+            if trajectory_yaw_data[i] < -np.pi:
+                trajectory_yaw_data[i] += 2 * np.pi
 
-        # [2-2] smoothing figure eight path
-        window = self.get_parameter("mov_ave_window").get_parameter_value().integer_value
-        if window < len(trajectory_position_data):
-            w = np.ones(window) / window
-            augmented_data = np.vstack(
-                [
-                    trajectory_position_data[-window:],
-                    trajectory_position_data,
-                    trajectory_position_data[:window],
-                ]
-            )
-            trajectory_position_data[:, 0] = (
-                1 * np.convolve(augmented_data[:, 0], w, mode="same")[window:-window]
-            )
-            trajectory_position_data[:, 1] = (
-                1 * np.convolve(augmented_data[:, 1], w, mode="same")[window:-window]
-            )
-            # NOTE: Target yaw angle trajectory is not smoothed. Please implement it if using a controller other than pure pursuit.
-
-        # [2-3] translation and rotation of origin
+        # [2-2] translation and rotation of origin
         rot_matrix = np.array(
             [
                 [np.cos(yaw_offset), -np.sin(yaw_offset)],
@@ -325,6 +311,53 @@ class DataCollectingTrajectoryPublisher(Node):
         trajectory_position_data = (rot_matrix @ trajectory_position_data.T).T
         trajectory_position_data += rectangle_center_position
         trajectory_yaw_data += yaw_offset
+
+        # [2-3] smoothing figure eight path
+        window = self.get_parameter("mov_ave_window").get_parameter_value().integer_value
+        if window < len(trajectory_position_data):
+            w = np.ones(window) / window
+            augmented_position_data = np.vstack(
+                [
+                    trajectory_position_data[-window:],
+                    trajectory_position_data,
+                    trajectory_position_data[:window],
+                ]
+            )
+            trajectory_position_data[:, 0] = (
+                1 * np.convolve(augmented_position_data[:, 0], w, mode="same")[window:-window]
+            )
+            trajectory_position_data[:, 1] = (
+                1 * np.convolve(augmented_position_data[:, 1], w, mode="same")[window:-window]
+            )
+            augmented_yaw_data = np.hstack(
+                [
+                    trajectory_yaw_data[-window:],
+                    trajectory_yaw_data,
+                    trajectory_yaw_data[:window],
+                ]
+            )
+            smoothed_trajectory_yaw_data = trajectory_yaw_data.copy()
+            for i in range(len(trajectory_yaw_data)):
+                tmp_yaw = trajectory_yaw_data[i]
+                tmp_data = (
+                    augmented_yaw_data[window + (i - window // 2) : window + (i + window // 2)]
+                    - tmp_yaw
+                )
+                for j in range(len(tmp_data)):
+                    if tmp_data[j] > np.pi:
+                        tmp_data[j] -= 2 * np.pi
+                    if tmp_data[j] < -np.pi:
+                        tmp_data[j] += 2 * np.pi
+                tmp_data = np.convolve(tmp_data, w, mode="same")
+                smoothed_trajectory_yaw_data[i] = (
+                    tmp_yaw + np.convolve(tmp_data, w, mode="same")[window // 2]
+                )
+                if smoothed_trajectory_yaw_data[i] > np.pi:
+                    smoothed_trajectory_yaw_data[i] -= 2 * np.pi
+                if smoothed_trajectory_yaw_data[i] < -np.pi:
+                    smoothed_trajectory_yaw_data[i] += 2 * np.pi
+
+            trajectory_yaw_data = smoothed_trajectory_yaw_data.copy()
 
         # [2-4] nominal velocity
         target_longitudinal_velocity = (
@@ -424,6 +457,8 @@ class DataCollectingTrajectoryPublisher(Node):
                     nearestIndex = index_array_near[0]
 
             self.one_round_progress_rate = 1.0 * nearestIndex / len(trajectory_position_data)
+
+            self.get_logger().info("%s " % str(trajectory_yaw_data[nearestIndex]))
 
             # [5] modify target velocity
             # [5-1] add noise
