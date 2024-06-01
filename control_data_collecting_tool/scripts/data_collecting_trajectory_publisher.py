@@ -132,10 +132,10 @@ class DataCollectingTrajectoryPublisher(Node):
         )
 
         self.declare_parameter(
-            "velocity_limit_by_lateral_error",
+            "velocity_limit_by_tracking_error",
             3.0,
             ParameterDescriptor(
-                description="Velocity limit when lateral error exceeds threshold [m/s]"
+                description="Velocity limit when tracking error exceeds threshold [m/s]"
             ),
         )
 
@@ -317,7 +317,7 @@ class DataCollectingTrajectoryPublisher(Node):
             window = self.get_parameter("mov_ave_window").get_parameter_value().integer_value
             if window < len(trajectory_position_data):
                 w = np.ones(window) / window
-                augment_data = np.vstack(
+                augmented_data = np.vstack(
                     [
                         trajectory_position_data[-window:],
                         trajectory_position_data,
@@ -325,10 +325,10 @@ class DataCollectingTrajectoryPublisher(Node):
                     ]
                 )
                 trajectory_position_data[:, 0] = (
-                    1 * np.convolve(augment_data[:, 0], w, mode="same")[window:-window]
+                    1 * np.convolve(augmented_data[:, 0], w, mode="same")[window:-window]
                 )
                 trajectory_position_data[:, 1] = (
-                    1 * np.convolve(augment_data[:, 1], w, mode="same")[window:-window]
+                    1 * np.convolve(augmented_data[:, 1], w, mode="same")[window:-window]
                 )
                 # NOTE: Target yaw angle trajectory is not smoothed. Please implement it if using a controller other than pure pursuit.
 
@@ -450,20 +450,23 @@ class DataCollectingTrajectoryPublisher(Node):
                 trajectory_longitudinal_velocity_data, lateral_acc_limit
             )
             # [5-3] apply limit by lateral error
-            lateral_error_threshold = (
-                self.get_parameter("lateral_error_threshold").get_parameter_value().double_value
-            )
-            velocity_limit_by_lateral_error = (
-                self.get_parameter("velocity_limit_by_lateral_error")
+            velocity_limit_by_tracking_error = (
+                self.get_parameter("velocity_limit_by_tracking_error")
                 .get_parameter_value()
                 .double_value
             )
+
+            lateral_error_threshold = (
+                self.get_parameter("lateral_error_threshold").get_parameter_value().double_value
+            )
+
             tmp_lateral_error = np.sqrt(
                 ((trajectory_position_data[nearestIndex] - present_position[:2]) ** 2).sum()
             )
+
             if lateral_error_threshold < tmp_lateral_error:
                 trajectory_longitudinal_velocity_data = np.minimum(
-                    trajectory_longitudinal_velocity_data, velocity_limit_by_lateral_error
+                    trajectory_longitudinal_velocity_data, velocity_limit_by_tracking_error
                 )
 
             # [6] publish
@@ -597,9 +600,9 @@ class DataCollectingTrajectoryPublisher(Node):
                 plt.plot(
                     # distance[nearestIndex : nearestIndex + pub_traj_len],
                     timestamp[nearestIndex : nearestIndex + pub_traj_len],
-                    velocity_limit_by_lateral_error * np.ones(pub_traj_len),
+                    velocity_limit_by_tracking_error * np.ones(pub_traj_len),
                     "--",
-                    label="vel limit by lateral error (only when exceeding threshold)",
+                    label="vel limit by tracking error (only when exceeding threshold)",
                 )
                 plt.plot(
                     # distance[nearestIndex : nearestIndex + pub_traj_len],

@@ -75,7 +75,7 @@ ROS 2 params in `/data_collecting_trajectory_publisher` node:
 | :--------------------------------------- | :------- | :-------------------------------------------------------------------- | :------------ |
 | `max_lateral_accel`                      | `double` | Max lateral acceleration limit [m/ss]                                 | 0.5           |
 | `lateral_error_threshold`                | `double` | Lateral error threshold where applying velocity limit [m/s]           | 5.0           |
-| `velocity_limit_by_lateral_error`        | `double` | Velocity limit when lateral error exceeds threshold [m/s]             | 3.0           |
+| `velocity_limit_by_tracking_error`       | `double` | Velocity limit applied when tracking error exceeds threshold [m/s]    | 3.0           |
 | `mov_ave_window`                         | `int`    | Moving average smoothing window size                                  | 50            |
 | `target_longitudinal_velocity`           | `double` | Target longitudinal velocity [m/s]                                    | 6.0           |
 | `longitudinal_velocity_noise_amp`        | `double` | Target longitudinal velocity additional sine noise amplitude [m/s]    | 0.1           |

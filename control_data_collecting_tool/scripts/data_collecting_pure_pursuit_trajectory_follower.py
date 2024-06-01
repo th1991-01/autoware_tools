@@ -165,7 +165,7 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
         if (self._present_trajectory is not None) and (self._present_kinematic_state is not None):
             self.control()
 
-    def naive_pure_pursuit_control(
+    def pure_pursuit_control(
         self,
         pos_xy_obs,
         pos_yaw_obs,
@@ -309,7 +309,7 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
                 break
             targetIndex += 1
 
-        cmd = self.naive_pure_pursuit_control(
+        cmd = self.pure_pursuit_control(
             present_position[:2],
             present_yaw,
             present_linear_velocity[0],
@@ -378,7 +378,7 @@ class DataCollectingPurePursuitTrajetoryFollower(Node):
         marker_array.markers.append(marker_traj)
         self.data_collecting_lookahead_marker_array_pub_.publish(marker_array)
 
-        # [5] debug plot
+        # [99] debug plot
         if debug_matplotlib_plot_flag:
             self.acc_history.append(1 * cmd[0])
             self.steer_history.append(1 * cmd[1])
