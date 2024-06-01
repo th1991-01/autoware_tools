@@ -23,13 +23,26 @@ ros2 launch autoware_launch planning_simulator.launch.xml rviz_config:=$(ros2 pk
 
 2. Set an initial pose, see [here](https://autowarefoundation.github.io/autoware-documentation/main/tutorials/ad-hoc-simulation/planning-simulation/#2-set-an-initial-pose-for-the-ego-vehicle)
 
-3. Launch control_data_collecting_tool.
+3. Add `DataCollectingAreaSelectionTool` rviz plugin.
+
+  <img src="resource/add_rviz_plugin.png" width="480">
+
+4. Launch control_data_collecting_tool.
 
 ```bash
 ros2 launch control_data_collecting_tool control_data_collecting_tool.launch.py
 ```
 
-4. Select `DataCollectingAreaSelectionTool` plugin.
+5. Add visualization:
+
+- `/data_collecting_area`
+  - Type: Polygon
+- `/data_collecting_trajectory_marker_array`
+  - Type: MarkerArray
+- `/data_collecting_lookahead_marker_array`
+  - Type: MarkerArray
+
+6. Select `DataCollectingAreaSelectionTool` plugin.
 
    <img src="resource/select_tool.png" width="480">
 
@@ -40,13 +53,13 @@ ros2 launch control_data_collecting_tool control_data_collecting_tool.launch.py
 > [!NOTE]
 > You cannot change the data collecting area while driving.
 
-5. start recording rosbag data. For example, run the following command:
+7. start recording rosbag data. For example, run the following command:
 
 ```bash
 ros2 bag record /localization/kinematic_state /localization/acceleration /vehicle/status/steering_status /sensing/imu/imu_data /system/operation_mode/state /vehicle/status/control_mode /external/selected/control_cmd /external/selected/gear_cmd /data_collecting_trajectory
 ```
 
-6. Click the `LOCAL` button on `OperationMode` in `AutowareStatePanel`.
+8. Click the `LOCAL` button on `OperationMode` in `AutowareStatePanel`.
 
    <img src="resource/push_LOCAL.png" width="480">
 
