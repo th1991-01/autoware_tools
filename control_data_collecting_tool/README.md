@@ -18,7 +18,7 @@ This package provides tools for automatically collecting data using pure pursuit
 1. Launch Autoware.
 
 ```bash
-ros2 launch autoware_launch planning_simulator.launch.xml rviz_config:=$(ros2 pkg prefix control_data_collecting_tool)/share/control_data_collecting_tool/rviz/autoware.rviz map_path:=$HOME/autoware_map/sample-map-planning vehicle_model:=sample_vehicle sensor_model:=sample_sensor_kit
+ros2 launch autoware_launch planning_simulator.launch.xml map_path:=$HOME/autoware_map/sample-map-planning vehicle_model:=sample_vehicle sensor_model:=sample_sensor_kit
 ```
 
 2. Set an initial pose, see [here](https://autowarefoundation.github.io/autoware-documentation/main/tutorials/ad-hoc-simulation/planning-simulation/#2-set-an-initial-pose-for-the-ego-vehicle)
@@ -33,7 +33,7 @@ ros2 launch autoware_launch planning_simulator.launch.xml rviz_config:=$(ros2 pk
 ros2 launch control_data_collecting_tool control_data_collecting_tool.launch.py
 ```
 
-5. Add visualization:
+5. Add visualization in rviz:
 
 - `/data_collecting_area`
   - Type: Polygon

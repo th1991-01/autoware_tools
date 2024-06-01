@@ -569,12 +569,12 @@ class DataCollectingTrajectoryPublisher(Node):
             # [6-2a] local trajectory
             marker_traj1 = Marker()
             marker_traj1.type = 4
-            marker_traj1.id = 0
+            marker_traj1.id = 1
             marker_traj1.header.frame_id = "map"
 
             marker_traj1.action = marker_traj1.ADD
 
-            marker_traj1.scale.x = 0.3
+            marker_traj1.scale.x = 0.4
             marker_traj1.scale.y = 0.0
             marker_traj1.scale.z = 0.0
 
@@ -599,12 +599,12 @@ class DataCollectingTrajectoryPublisher(Node):
             # [6-2b] whole trajectory
             marker_traj2 = Marker()
             marker_traj2.type = 4
-            marker_traj2.id = 1
+            marker_traj2.id = 0
             marker_traj2.header.frame_id = "map"
 
             marker_traj2.action = marker_traj2.ADD
 
-            marker_traj2.scale.x = 0.3
+            marker_traj2.scale.x = 0.2
             marker_traj2.scale.y = 0.0
             marker_traj2.scale.z = 0.0
 
